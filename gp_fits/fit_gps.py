@@ -4,14 +4,20 @@ import pandas as pd
 import GPflow
 from tqdm import tqdm
 
+
+def get_coords(index):
+    coords = pd.DataFrame(index=index)
+    coords['x'] = index.str.split('x').str.get(0).map(float)
+    coords['y'] = index.str.split('x').str.get(1).map(float)
+    return coords
+
+
 @click.command()
 @click.argument('expression_csv')
 @click.argument('results_csv')
 def fit_gps(expression_csv, results_csv):
     df = pd.read_csv(expression_csv, index_col=0)
-    coords = pd.DataFrame(index=df.index)
-    coords['x'] = df.index.str.split('x').str.get(0).map(float)
-    coords['y'] = df.index.str.split('x').str.get(1).map(float)
+    coords = get_coords(df.index)
 
     X = coords[['x', 'y']].as_matrix()
     Y = np.log10(df.iloc[:, 0].map(float)[:, None] + 1)
