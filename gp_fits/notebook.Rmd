@@ -1,0 +1,20 @@
+```{r}
+library(rstan)
+library(tidyverse)
+```
+
+```{r}
+data <- read_csv('../data/Rep12_MOB_46.csv')
+data <- data %>% separate(X1, c('x', 'y'), 'x', convert = TRUE)
+```
+```{r}
+data
+```
+
+
+```{r}
+qplot(data$x, data$y, color = log10(data$Cdk13), size = 20)
+```
+
+
+
