@@ -14,18 +14,18 @@ def get_coords(index):
 
 @profile
 def main():
-    df = pd.read_csv('data/Rep11_MOB_3.csv', index_col=0)
+    df = pd.read_csv('data/Rep12_MOB_3.csv', index_col=0)
     sample_info = get_coords(df.index)
 
     # Run workflow
-    l = 25
+    l = 10.
     K = fgp.SE_kernel(sample_info[['x', 'y']], l)
     U, S = fgp.factor(K)
     UT1 = fgp.get_UT1(U)
 
     results = []
     dfm = np.log10(df.as_matrix() + 1)
-    n = dfm.shape[0]
+    n = dfm.shape[1]
     for g in tqdm(range(n)):
         y = dfm[:, g]
 
@@ -33,20 +33,26 @@ def main():
 
         max_ll = -np.inf
         max_delta = np.nan
-        for delta in np.logspace(base=np.e, start=-10, stop=10, num=100):
+        for delta in np.logspace(base=np.e, start=-10, stop=10, num=64):
             cur_ll = fgp.LL(delta, UTy, UT1, S, n)
             if cur_ll > max_ll:
                 max_ll = cur_ll
                 max_delta = delta
 
-        # print(g, max_ll, max_delta)
-    #     results.append({'g': g, 'max_ll': max_ll, 'max_delta': max_delta})
+        results.append({'g': df.columns[g],
+                        'max_ll': max_ll,
+                        'max_delta': max_delta})
 
-    # results = pd.DataFrame(results)
-    # plt.scatter(results['max_delta'], results['max_ll'], c='k')
-    # plt.xscale('log')
-    # plt.xlim(np.exp(-10), np.exp(10))
-    # plt.show()
+    results = pd.DataFrame(results)
+    plt.scatter(results['max_delta'], results['max_ll'], c='k')
+    plt.xscale('log')
+    plt.xlim(np.exp(-11), np.exp(11))
+    plt.xlabel('$\delta$')
+    plt.ylabel('Maximum Log Likelihood')
+    plt.title('lengthscale: {}'.format(l))
+    plt.savefig('fastgp-fits.png', bbox_inches='tight')
+    
+    print(results.sort_values('max_delta').head(20))
 
 if __name__ == '__main__':
     main()
