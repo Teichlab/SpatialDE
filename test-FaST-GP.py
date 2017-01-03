@@ -33,14 +33,14 @@ def main():
 
         max_ll = -np.inf
         max_delta = np.nan
-        for delta in np.logspace(base=np.e, start=-10, stop=10, num=32):
+        for delta in np.logspace(base=np.e, start=-10, stop=10, num=100):
             cur_ll = fgp.LL(delta, UTy, UT1, S, n)
             if cur_ll > max_ll:
                 max_ll = cur_ll
                 max_delta = delta
 
         # print(g, max_ll, max_delta)
-        # results.append({'g': g, 'max_ll': max_ll, 'max_delta': max_delta})
+    #     results.append({'g': g, 'max_ll': max_ll, 'max_delta': max_delta})
 
     # results = pd.DataFrame(results)
     # plt.scatter(results['max_delta'], results['max_ll'], c='k')

@@ -14,11 +14,11 @@ def factor(K):
 
 
 def get_UT1(U):
-    return U.T.sum(0)
+    return U.sum(1)
 
 
 def get_UTy(U, y):
-    return U.T.dot(y)
+    return y.dot(U)
 
 
 @profile
@@ -35,6 +35,10 @@ def mu_hat(delta, UTy, UT1, Sd, n):
 @profile
 def LL(delta, UTy, UT1, S, n):
     ''' Log-likelihood of GP model as a function of delta.
+
+    The parameter delta is the ratio s_e / s_t, where s_e is the
+    observation noise and s_t is the noise explained by covariance
+    in time or space.
     '''
     Sd = (S + delta)
     mu_h = mu_hat(delta, UTy, UT1, Sd, n)
