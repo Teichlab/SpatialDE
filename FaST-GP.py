@@ -14,29 +14,29 @@ def factor(K):
 
 
 def get_UT1(U):
-    return U.T.sum(0)[:, None]
+    return U.T.sum(0)
 
 
 def get_UTy(U, y):
     return U.T.dot(y)
 
 
-def mu_hat(delta, UTy, UT1, S, n):
+@profile
+def mu_hat(delta, UTy, UT1, Sd, n):
     ''' ML Estimate of bias mu, function of delta.
     '''
-    Sd = (S + delta)[:, None]
-
-    sum_1 = (UT1 / Sd).T.dot(UT1)[0]
-    sum_2 = (UT1 / Sd).T.dot(UTy)[0]
+    sum_1 = (UT1 / Sd).dot(UT1)
+    sum_2 = (UT1 / Sd).dot(UTy)
 
     return sum_2 / sum_1
 
 
+@profile
 def LL(delta, UTy, UT1, S, n):
     ''' Log-likelihood of GP model as a function of delta.
     '''
-    mu_h = mu_hat(delta, UTy, UT1, S, n)
-    Sd = (S + delta)[:, None]
+    Sd = (S + delta)
+    mu_h = mu_hat(delta, UTy, UT1, Sd, n)
     sum_1 = np.log(Sd).sum()
     sum_2 = ((UTy - UT1 * mu_h) / Sd).sum()
 
