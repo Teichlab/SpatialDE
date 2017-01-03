@@ -24,9 +24,10 @@ def main():
     UT1 = fgp.get_UT1(U)
 
     results = []
-    for g in tqdm(df.columns):
-        y = np.log10(df[g] + 1)
-        n = y.shape[0]
+    dfm = np.log10(df.as_matrix() + 1)
+    n = dfm.shape[0]
+    for g in tqdm(range(n)):
+        y = dfm[:, g]
 
         UTy = fgp.get_UTy(U, y)
 

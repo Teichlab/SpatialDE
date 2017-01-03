@@ -25,8 +25,9 @@ def get_UTy(U, y):
 def mu_hat(delta, UTy, UT1, Sd, n):
     ''' ML Estimate of bias mu, function of delta.
     '''
-    sum_1 = (UT1 / Sd).dot(UT1)
-    sum_2 = (UT1 / Sd).dot(UTy)
+    UT1_scaled = UT1 / Sd
+    sum_1 = (UT1_scaled).dot(UT1)
+    sum_2 = (UT1_scaled).dot(UTy)
 
     return sum_2 / sum_1
 
