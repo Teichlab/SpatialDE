@@ -22,21 +22,22 @@ def get_UTy(U, y):
 
 
 def mu_hat(delta, UTy, UT1, S, n):
-    sum_1 = 0
-    sum_2 = 0
-    for i in range(n):
-        sum_1 += (UT1[i] ** 2).sum() / (S[i] + delta)
-        sum_2 += (UT1[i].T.dot(UTy[i]) / (S[i] + delta))
+    ''' ML Estimate of bias mu, function of delta.
+    '''
+    Sd = (S + delta)[:, None]
+
+    sum_1 = (UT1 / Sd).T.dot(UT1)[0]
+    sum_2 = (UT1 / Sd).T.dot(UTy)[0]
 
     return sum_2 / sum_1
 
 
 def LL(delta, UTy, UT1, S, n):
+    ''' Log-likelihood of GP model as a function of delta.
+    '''
     mu_h = mu_hat(delta, UTy, UT1, S, n)
-    sum_1 = np.log(S + delta).sum()
-    sum_2 = 0
-    for i in range(n):
-        sum_2 += ((UTy[i] - UT1[i] * mu_h) / (S[i] + delta))
+    Sd = (S + delta)[:, None]
+    sum_1 = np.log(Sd).sum()
+    sum_2 = ((UTy - UT1 * mu_h) / Sd).sum()
 
     return -0.5 * (n * np.log(2 * np.pi) + sum_1 + n + n * np.log(sum_2))
-
