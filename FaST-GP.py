@@ -5,8 +5,10 @@ import pandas as pd
 
 
 def SE_kernel(X, l):
-    R = squareform(pdist(X, 'euclidean')) ** 2
-    return np.exp(R / (2 * l ** 2))
+    Xsq = np.sum(np.square(X), 1)
+    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = np.clip(R2, 0, np.inf)
+    return np.exp(-R2 / (2 * l ** 2))
 
 
 def factor(K):
@@ -67,7 +69,6 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
     '''
     results = []
     n, G = exp_tab.shape
-    print(G)
     for g in tqdm(range(G)):
         y = exp_tab.iloc[:, g]
         UTy = get_UTy(U, y)

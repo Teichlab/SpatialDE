@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 fgp = __import__('FaST-GP')
+ds = __import__('data_simulation')
 
 
 def get_coords(index):
@@ -76,6 +77,24 @@ def plot_LL_curves():
     plt.savefig('example_grids.png', bbox_inches='tight')
 
 
+def opt_simulation():
+    l = 10
+    X, dfm, true_vals = ds.make_ls_data(10, 250, 500)
+
+    results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
+
+    true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
+
+    plt.scatter(results['max_delta'], true_vals['delta'])
+    plt.xscale('log')
+    plt.xlim(np.exp(-11), np.exp(11))
+    plt.yscale('log')
+    plt.ylim(np.exp(-11), np.exp(11))
+
+    plt.show()
+
+
 if __name__ == '__main__':
+    # opt_simulation()
     plot_LL_curves()
     # main()
