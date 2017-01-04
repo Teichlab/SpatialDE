@@ -35,16 +35,15 @@ def main():
 
 
 def plot_LL_curves():
-    df = pd.read_csv('data/Rep12_MOB_3.csv', index_col=0)
-    sample_info = get_coords(df.index)
+    # df = pd.read_csv('data/Rep12_MOB_3.csv', index_col=0)
+    # sample_info = get_coords(df.index)
+    # X = sample_info[['x', 'y']]
+    # dfm = np.log10(df + 1).sample(10, axis=1)
 
-    X = sample_info[['x', 'y']]
-
-    # example_genes = ['Nnat', 'Malsu1', 'Fmnl1']
-    # dfm = np.log10(df + 1)[example_genes]
-
-    dfm = np.log10(df + 1).sample(10, axis=1)
     l = 10
+
+    X, dfm, true_vals = ds.make_ls_data(l, 250, 10)
+    true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
 
     K = fgp.SE_kernel(X, l)
     U, S = fgp.factor(K)
@@ -70,7 +69,12 @@ def plot_LL_curves():
         plt.plot(delta_range, LLs, marker='o', markeredgecolor='w', markersize=2, markeredgewidth=1)
         plt.scatter([max_delta], [max_ll], marker='v', c='r', edgecolor='none', zorder=5)
         plt.title(dfm.columns[g])
-        plt.xscale('log')
+        plt.axvline(true_vals.iloc[g, -1], color='r')
+        try:
+            plt.xscale('log')
+        except ValueError:
+            pass
+
         plt.xlim(np.exp(-11), np.exp(11))
 
     plt.tight_layout()
