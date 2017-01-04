@@ -23,7 +23,6 @@ def get_UTy(U, y):
     return y.dot(U)
 
 
-@profile
 def mu_hat(delta, UTy, UT1, Sd, n):
     ''' ML Estimate of bias mu, function of delta.
     '''
@@ -34,7 +33,6 @@ def mu_hat(delta, UTy, UT1, Sd, n):
     return sum_2 / sum_1
 
 
-@profile
 def LL(delta, UTy, UT1, S, n):
     ''' Log-likelihood of GP model as a function of delta.
 
@@ -50,7 +48,6 @@ def LL(delta, UTy, UT1, S, n):
     return -0.5 * (n * np.log(2 * np.pi) + sum_1 + n + n * np.log(sum_2))
 
 
-@profile
 def search_max_LL(UTy, UT1, S, n, num=64):
     ''' Search for delta which maximizes log likelihood.
     '''
@@ -65,16 +62,17 @@ def search_max_LL(UTy, UT1, S, n, num=64):
     return max_ll, max_delta
 
 
-@profile
 def lengthscale_fits(exp_tab, U, UT1, S, num=64):
+    ''' Fit GPs after pre-processing for particular lengthscale
+    '''
     results = []
-    G = exp_tab.shape[1]
+    n, G = exp_tab.shape
     print(G)
     for g in tqdm(range(G)):
         y = exp_tab.iloc[:, g]
         UTy = get_UTy(U, y)
 
-        max_ll, max_delta = search_max_LL(UTy, UT1, S, G, num)
+        max_ll, max_delta = search_max_LL(UTy, UT1, S, n, num)
         results.append({'g': exp_tab.columns[g],
                         'max_ll': max_ll,
                         'max_delta': max_delta})
@@ -82,7 +80,6 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
     return pd.DataFrame(results)
 
 
-@profile
 def dyn_de(X, exp_tab, lengthscale=10, num=64):
     K = SE_kernel(X, lengthscale)
     U, S = factor(K)
