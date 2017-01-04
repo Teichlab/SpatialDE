@@ -42,12 +42,12 @@ def LL(delta, UTy, UT1, S, n):
     observation noise and s_t is the noise explained by covariance
     in time or space.
     '''
-    Sd = (S + delta)
+    Sd = S + delta
     mu_h = mu_hat(delta, UTy, UT1, Sd, n)
-    sum_1 = np.log(Sd).sum()
-    sum_2 = ((UTy - UT1 * mu_h) / Sd).sum()
+    sum_1 = (np.square(UTy - UT1 * mu_h) / Sd).sum()
+    sum_2 = np.log(Sd).sum()
 
-    return -0.5 * (n * np.log(2 * np.pi) + sum_1 + n + n * np.log(sum_2))
+    return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
 
 
 def search_max_LL(UTy, UT1, S, n, num=64):
@@ -61,7 +61,9 @@ def search_max_LL(UTy, UT1, S, n, num=64):
             max_ll = cur_ll
             max_delta = delta
 
-    return max_ll, max_delta
+    max_mu_hat = mu_hat(max_delta, UTy, UT1, S + max_delta, n)
+
+    return max_ll, max_delta, max_mu_hat
 
 
 def lengthscale_fits(exp_tab, U, UT1, S, num=64):
@@ -73,10 +75,11 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         y = exp_tab.iloc[:, g]
         UTy = get_UTy(U, y)
 
-        max_ll, max_delta = search_max_LL(UTy, UT1, S, n, num)
+        max_ll, max_delta, max_mu_hat = search_max_LL(UTy, UT1, S, n, num)
         results.append({'g': exp_tab.columns[g],
                         'max_ll': max_ll,
-                        'max_delta': max_delta})
+                        'max_delta': max_delta,
+                        'max_mu_hat': max_mu_hat})
         
     return pd.DataFrame(results)
 

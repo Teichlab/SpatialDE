@@ -14,14 +14,14 @@ def get_coords(index):
     return coords
 
 def main():
-    df = pd.read_csv('data/Rep12_MOB_3.csv', index_col=0)
+    df = pd.read_csv('data/Rep12_MOB_1.csv', index_col=0)
     sample_info = get_coords(df.index)
 
     # Run workflow
     X = sample_info[['x', 'y']]
     dfm = np.log10(df + 1)
     l = 10
-    results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
+    results = fgp.dyn_de(X, dfm, lengthscale=l, num=64)
 
     plt.scatter(results['max_delta'], results['max_ll'], c='k')
     plt.xscale('log')
@@ -40,7 +40,7 @@ def plot_LL_curves():
     # X = sample_info[['x', 'y']]
     # dfm = np.log10(df + 1).sample(10, axis=1)
 
-    l = 10
+    l = 5
 
     X, dfm, true_vals = ds.make_ls_data(l, 250, 10)
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
@@ -54,7 +54,7 @@ def plot_LL_curves():
         y = dfm.iloc[:, g]
         UTy = fgp.get_UTy(U, y)
         LLs = []
-        delta_range = np.logspace(base=np.e, start=-10, stop=10, num=100)
+        delta_range = np.logspace(base=np.e, start=-10, stop=10, num=32)
         max_ll = -np.inf
         max_delta = np.nan
         for delta in delta_range:
@@ -85,20 +85,25 @@ def opt_simulation():
     l = 10
     X, dfm, true_vals = ds.make_ls_data(10, 250, 500)
 
-    results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
+    results = fgp.dyn_de(X, dfm, lengthscale=l, num=100)
 
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
 
+    plt.subplot(2, 1, 1)
     plt.scatter(results['max_delta'], true_vals['delta'])
     plt.xscale('log')
     plt.xlim(np.exp(-11), np.exp(11))
     plt.yscale('log')
     plt.ylim(np.exp(-11), np.exp(11))
+    plt.plot([1e-4, 1e4], [1e-4, 1e4], c='r')
 
-    plt.show()
+    plt.subplot(2, 1, 2)
+    plt.scatter(results['max_mu_hat'], true_vals['mu'])
+
+    plt.savefig('simulation_accuracy.png')
 
 
 if __name__ == '__main__':
-    # opt_simulation()
-    plot_LL_curves()
+    opt_simulation()
+    # plot_LL_curves()
     # main()

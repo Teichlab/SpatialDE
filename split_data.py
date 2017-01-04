@@ -3,7 +3,7 @@ import pandas as pd
 
 pattern = 'http://www.spatialtranscriptomicsresearch.org/wp-content/uploads/2016/07/Rep{}_MOB_count_matrix-1.tsv'
 
-GENES_PER_NODE = 2000
+GENES_PER_NODE = 5000
 replicates = [11, 12]
 
 for replicate in replicates:
