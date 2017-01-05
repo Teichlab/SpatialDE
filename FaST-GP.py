@@ -29,10 +29,10 @@ def mu_hat(delta, UTy, UT1, Sd, n):
     ''' ML Estimate of bias mu, function of delta.
     '''
     UT1_scaled = UT1 / Sd
-    sum_1 = (UT1_scaled).dot(UT1)
-    sum_2 = (UT1_scaled).dot(UTy)
+    sum_1 = (UT1_scaled).dot(UTy)
+    sum_2 = (UT1_scaled).dot(UT1)
 
-    return sum_2 / sum_1
+    return sum_1 / sum_2
 
 
 def LL(delta, UTy, UT1, S, n):
