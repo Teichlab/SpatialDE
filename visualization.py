@@ -4,9 +4,11 @@ from matplotlib import cm
 
 fgp = __import__('FaST-GP')
 
-def ls_sample_2d(ls_list=[3, 10, 30, 100]):
-    x = np.linspace(0, 200)
-    X1, X2 = np.meshgrid(x, x)
+def ls_sample_2d(ls_list=[3, 10, 30, 100], xmin=5, xmax=30, ymin=5, ymax=26):
+    x = np.linspace(xmin, xmax)
+    y = np.linspace(ymin, ymax)
+
+    X1, X2 = np.meshgrid(x, y)
     X = np.vstack((X1.flatten(), X2.flatten())).T
 
     for i, ls in enumerate(ls_list):
@@ -26,4 +28,4 @@ def ls_sample_2d(ls_list=[3, 10, 30, 100]):
 
 
 if __name__ == '__main__':
-    ls_sample_2d()
+    ls_sample_2d([1., 5., 10., 20.])

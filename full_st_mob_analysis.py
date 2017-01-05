@@ -12,13 +12,12 @@ def get_coords(index):
     return coords
 
 
-def main():
+def main(l=5):
     df = pd.read_table('data/Rep7_MOB_count_matrix-1.tsv', index_col=0)
     sample_info = get_coords(df.index)
     
     X = sample_info[['x', 'y']]
     dfm = np.log10(df + 1)
-    l = 10
     results_Rep7 = fgp.dyn_de(X, dfm, lengthscale=l)
 
     df = pd.read_table('data/Rep8_MOB_count_matrix-1.tsv', index_col=0)
@@ -26,7 +25,6 @@ def main():
     
     X = sample_info[['x', 'y']]
     dfm = np.log10(df + 1)
-    l = 10
     results_Rep8 = fgp.dyn_de(X, dfm, lengthscale=l)
 
     idx = results_Rep7.index.intersection(results_Rep8.index)
