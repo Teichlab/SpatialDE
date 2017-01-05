@@ -110,6 +110,6 @@ def opt_simulation():
 
 
 if __name__ == '__main__':
-    opt_simulation()
+    # opt_simulation()
     # plot_LL_curves()
-    # main()
+    main()
