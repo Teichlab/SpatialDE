@@ -16,6 +16,7 @@ def make_ls_data(lengthscale, n_obs, n_sim):
     for g in names:
         mu = np.random.uniform(low=0., high=5.)
         # mu = 0
+        # mu = 4
         s2_t = np.exp(np.random.uniform(low=-5., high=5.))
         s2_e = np.exp(np.random.uniform(low=-5., high=5.))
         # s2_e = 1.0

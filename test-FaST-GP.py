@@ -47,7 +47,7 @@ def plot_LL_curves():
 
     K = fgp.SE_kernel(X, l)
     U, S = fgp.factor(K)
-    UT1 = fgp.get_UT1(K)
+    UT1 = fgp.get_UT1(U)
 
     n, G = dfm.shape
     for g in range(G):
@@ -66,44 +66,50 @@ def plot_LL_curves():
 
 
         plt.subplot(np.ceil(G / 2.), 2, g + 1)
-        plt.plot(delta_range, LLs, marker='o', markeredgecolor='w', markersize=2, markeredgewidth=1)
+        plt.plot(delta_range, LLs, marker='o', markeredgecolor='w', markersize=2, markeredgewidth=1, c='k')
         plt.scatter([max_delta], [max_ll], marker='v', c='r', edgecolor='none', zorder=5)
         plt.title(dfm.columns[g])
         plt.axvline(true_vals.iloc[g, -1], color='r')
-        try:
-            plt.xscale('log')
-        except ValueError:
-            pass
-
+        plt.xscale('log')
         plt.xlim(np.exp(-11), np.exp(11))
 
-    plt.tight_layout()
-    plt.savefig('example_grids.png', bbox_inches='tight')
+    plt.savefig('example_grids.png')
 
 
 def opt_simulation():
     l = 10
     X, dfm, true_vals = ds.make_ls_data(10, 250, 500)
 
-    results = fgp.dyn_de(X, dfm, lengthscale=l, num=100)
+    results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
 
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
 
-    plt.subplot(2, 1, 1)
-    plt.scatter(results['max_delta'], true_vals['delta'])
+    plt.subplot(3, 1, 1)
+    plt.scatter(results['max_delta'], true_vals['delta'], c='k')
     plt.xscale('log')
-    plt.xlim(np.exp(-11), np.exp(11))
+    plt.xlim(np.exp(-11.), np.exp(11.))
     plt.yscale('log')
-    plt.ylim(np.exp(-11), np.exp(11))
+    plt.ylim(np.exp(-11.), np.exp(11.))
     plt.plot([1e-4, 1e4], [1e-4, 1e4], c='r')
 
-    plt.subplot(2, 1, 2)
-    plt.scatter(results['max_mu_hat'], true_vals['mu'])
+    plt.subplot(3, 1, 2)
+    plt.scatter(results['max_s2_t_hat'], true_vals['s2_t'], c='k')
+    plt.xscale('log')
+    plt.xlim(np.exp(-6.), np.exp(6.))
+    plt.yscale('log')
+    plt.ylim(np.exp(-6.), np.exp(6.))
+    plt.plot([1e-2, 1e2], [1e-2, 1e2], c='r')
+
+    plt.subplot(3, 1, 3)
+    plt.scatter(results['max_mu_hat'], true_vals['mu'], c='k')
+    plt.xlim(-1, 6)
+    plt.ylim(-1, 6)
+    plt.plot([0, 5], [0, 5], c='r')
 
     plt.savefig('simulation_accuracy.png')
 
 
 if __name__ == '__main__':
-    opt_simulation()
-    # plot_LL_curves()
+    # opt_simulation()
+    plot_LL_curves()
     # main()
