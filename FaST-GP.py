@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.spatial.distance import pdist, squareform
+from scipy import optimize
 from tqdm import tqdm
 import pandas as pd
 
@@ -57,6 +57,37 @@ def LL(delta, UTy, UT1, S, n):
     return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
 
 
+def make_objective(UTy, UT1, S, n):
+    def LL_obj(log_delta):
+        return -LL(np.exp(log_delta), UTy, UT1, S, n)
+
+    return LL_obj
+
+
+def brent_max_LL(UTy, UT1, S, n):
+    LL_obj = make_objective(UTy, UT1, S, n)
+    o = optimize.minimize_scalar(LL_obj, bounds=[-10, 10], method='bounded', options={'maxiter': 32})
+    # o = optimize.minimize_scalar(LL_obj)
+    #  o.nfev has the number of function evals
+    max_ll = -o.fun
+    max_delta = np.exp(o.x)
+    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
+
+    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
+
+
+def lbfgsb_max_LL(UTy, UT1, S, n):
+    LL_obj = make_objective(UTy, UT1, S, n)
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 10)], maxfun=32, factr=1e12, epsilon=1e-4)
+    max_ll = -f
+    max_delta = np.exp(x[0])
+    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
+
+    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
+
+
 def search_max_LL(UTy, UT1, S, n, num=64):
     ''' Search for delta which maximizes log likelihood.
     '''
@@ -83,7 +114,10 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         y = exp_tab.iloc[:, g]
         UTy = get_UTy(U, y)
 
-        max_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num)
+        max_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        # max_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
+        # max_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num)
+        
         results.append({'g': exp_tab.columns[g],
                         'max_ll': max_ll,
                         'max_delta': max_delta,

@@ -21,7 +21,7 @@ def main():
     X = sample_info[['x', 'y']]
     dfm = np.log10(df + 1)
     l = 10
-    results = fgp.dyn_de(X, dfm, lengthscale=l, num=64)
+    results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
 
     plt.scatter(results['max_delta'], results['max_ll'], c='k')
     plt.xscale('log')
@@ -40,7 +40,7 @@ def plot_LL_curves():
     # X = sample_info[['x', 'y']]
     # dfm = np.log10(df + 1).sample(10, axis=1)
 
-    l = 5
+    l = 10
 
     X, dfm, true_vals = ds.make_ls_data(l, 250, 10)
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
@@ -78,7 +78,7 @@ def plot_LL_curves():
 
 def opt_simulation():
     l = 10
-    X, dfm, true_vals = ds.make_ls_data(10, 250, 500)
+    X, dfm, true_vals = ds.make_ls_data(10, 500, 500)
 
     results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
 
@@ -110,6 +110,6 @@ def opt_simulation():
 
 
 if __name__ == '__main__':
-    # opt_simulation()
-    plot_LL_curves()
+    opt_simulation()
+    # plot_LL_curves()
     # main()
