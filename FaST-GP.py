@@ -23,7 +23,7 @@ def cosine_kernel(X, p):
     Xsq = np.sum(np.square(X), 1)
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 0, np.inf)
-    return np.cos(2 * np.pi * R2 / ((2 * p) ** 2))
+    return np.cos(2 * np.pi * np.sqrt(R2) / p)
 
 
 def factor(K):
