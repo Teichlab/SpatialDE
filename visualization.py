@@ -13,11 +13,11 @@ def ls_sample_2d(ls_list=[3, 10, 30, 100], xmin=5, xmax=30, ymin=5, ymax=26):
 
     for i, ls in enumerate(ls_list):
         K = fgp.SE_kernel(X, ls)
-        y = np.random.multivariate_normal(0 * X[:, 0], K)
+        Y = np.random.multivariate_normal(0 * X[:, 0], K)
 
         plt.subplot(1, len(ls_list), i + 1)
-        plt.pcolormesh(X1, X2, y.reshape(X1.shape), cmap=cm.inferno)
-        plt.contour(X1, X2, y.reshape(X1.shape), cmap=cm.inferno)
+        plt.pcolormesh(X1, X2, Y.reshape(X1.shape), cmap=cm.inferno)
+        plt.contour(X1, X2, Y.reshape(X1.shape), cmap=cm.inferno)
         plt.axis('equal')
         plt.title('$ \ell = {} $'.format(ls))
 
@@ -27,5 +27,25 @@ def ls_sample_2d(ls_list=[3, 10, 30, 100], xmin=5, xmax=30, ymin=5, ymax=26):
     plt.savefig('ls_guide.png')
 
 
+def linear_sample_2d(xmin=5, xmax=30, ymin=5, ymax=26):
+    x = np.linspace(xmin, xmax)
+    y = np.linspace(ymin, ymax)
+
+    X1, X2 = np.meshgrid(x, y)
+    X = np.vstack((X1.flatten(), X2.flatten())).T
+
+    K = fgp.linear_kernel(X)
+    Y = np.random.multivariate_normal(0 * X[:, 0], K)
+
+    plt.pcolormesh(X1, X2, Y.reshape(X1.shape), cmap=cm.inferno)
+    plt.contour(X1, X2, Y.reshape(X1.shape), cmap=cm.inferno)
+    plt.axis('equal')
+
+    fig = plt.gcf()
+    fig.set_size_inches(9, 3)
+    plt.savefig('linear_guide.png')
+
+
 if __name__ == '__main__':
-    ls_sample_2d([1., 5., 10., 20.])
+    # ls_sample_2d([1., 5., 10., 20.])
+    linear_sample_2d()

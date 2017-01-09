@@ -10,6 +10,9 @@ def SE_kernel(X, l):
     R2 = np.clip(R2, 0, np.inf)
     return np.exp(-R2 / (2 * l ** 2))
 
+def linear_kernel(X):
+    return np.dot(X, X.T)
+
 
 def factor(K):
     S, U = np.linalg.eigh(K)
