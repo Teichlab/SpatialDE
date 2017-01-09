@@ -10,8 +10,20 @@ def SE_kernel(X, l):
     R2 = np.clip(R2, 0, np.inf)
     return np.exp(-R2 / (2 * l ** 2))
 
+
 def linear_kernel(X):
     return np.dot(X, X.T)
+
+
+def cosine_kernel(X, p):
+    ''' Periodic kernel as l -> oo in [Lloyd et al 2014]
+
+    Easier interpretable composability with SE?
+    '''
+    Xsq = np.sum(np.square(X), 1)
+    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = np.clip(R2, 0, np.inf)
+    return np.cos(2 * np.pi * R2 / ((2 * p) ** 2))
 
 
 def factor(K):
