@@ -87,7 +87,7 @@ def period_sample_2d(p_list=[3, 10, 30, 100], xmin=5, xmax=30, ymin=5, ymax=26):
 
 
 def period_sample_1d(p_list=[3, 10, 30, 100], xmin=5, xmax=30):
-    X = np.linspace(xmin, xmax)[:, None]
+    X = np.linspace(xmin, xmax, 50*50)[:, None]
 
     for i, p in enumerate(p_list):
         K = fgp.cosine_kernel(X, p)
@@ -106,6 +106,6 @@ def period_sample_1d(p_list=[3, 10, 30, 100], xmin=5, xmax=30):
 if __name__ == '__main__':
     # ls_sample_2d([1., 5., 10., 20.])
     # linear_sample_2d()
-    period_sample_2d([1., 5., 10., 20.])
+    # period_sample_2d([1., 5., 10., 20.])
     # ls_sample_1d([1., 5., 10., 20.])
-    # period_sample_1d([1., 5., 10., 20.])
+    period_sample_1d([1., 5., 10., 20.])
