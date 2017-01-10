@@ -99,6 +99,43 @@ def make_diff_cell_simulation_data(data_sizes=[50, 100, 250, 500, 1000]):
         true_vals.to_csv('sim_data/true_vals_{}.csv'.format(N))
 
 
+def compare_inference_speeds():
+    from glob import glob
+
+    Ns = []
+    results_fgp = []
+    results_gpy = []
+    
+    for dfm_file in glob('sim_data/dfm_*.csv'):
+        dfm = pd.read_csv(dfm_file, index_col=0)
+        N = dfm.shape[0]
+        Ns.append(N)
+        X = pd.read_csv(dfm_file.replace('dfm', 'X'), index_col=0).as_matrix()
+
+        t0 = time()
+        dyn_de_gpy(X, dfm, lengthscale=10)
+        t = time() - t0
+        results_gpy.append(t)
+
+        t0 = time()
+        fgp.dyn_de(X, dfm, lengthscale=10)
+        t = time() - t0
+        results_fgp.append(t)
+
+    # plt.xscale('log')
+    plt.yscale('log')
+    plt.scatter(Ns, results_gpy, c='k', s=50, label='GPy')
+    plt.scatter(Ns, results_fgp, c='r', s=50, label='FaST-GP')
+    
+    plt.legend(loc='upper left')
+    plt.title('Inference time for 25 genes')
+    plt.xlabel('# Cells')
+    plt.ylabel('Time (seconds)')
+
+    plt.savefig('sim_speed.png')
+
+
 if __name__ == '__main__':
     # opt_simulation_inference_accuracy()
-    make_diff_cell_simulation_data()
+    # make_diff_cell_simulation_data()
+    compare_inference_speeds()
