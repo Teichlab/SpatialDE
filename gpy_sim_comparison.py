@@ -62,7 +62,7 @@ def dyn_de_gpy(X, exp_tab, lengthscale=10):
     return pd.DataFrame(results)
 
 
-def opt_simulation():
+def opt_simulation_inference_accuracy():
     l = 10
     X, dfm, true_vals = ds.make_ls_data(l, 500, 25)
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
@@ -87,8 +87,18 @@ def opt_simulation():
     plt.scatter(fgp_results['time'], p_error, c='r', label='FGP', edgecolor='none')
 
     plt.legend()
-    plt.savefig('comparison.png')
+    plt.savefig('sim_inference_accuracy.png')
+
+
+def make_diff_cell_simulation_data(data_sizes=[50, 100, 250, 500, 1000]):
+    l = 10.
+    for N in data_sizes:
+        X, dfm, true_vals = ds.make_ls_data(l, N, 25)
+        pd.DataFrame(X).to_csv('sim_data/X_{}.csv'.format(N))
+        dfm.to_csv('sim_data/dfm_{}.csv'.format(N))
+        true_vals.to_csv('sim_data/true_vals_{}.csv'.format(N))
 
 
 if __name__ == '__main__':
-    opt_simulation()
+    # opt_simulation_inference_accuracy()
+    make_diff_cell_simulation_data()
