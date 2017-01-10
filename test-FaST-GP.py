@@ -1,3 +1,7 @@
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -78,7 +82,9 @@ def plot_LL_curves():
 
 def opt_simulation():
     l = 10
+    logging.info('Sampling ground truth data...')
     X, dfm, true_vals = ds.make_ls_data(10, 500, 500)
+    logging.info('Done')
 
     results = fgp.dyn_de(X, dfm, lengthscale=l, num=32)
 

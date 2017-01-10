@@ -1,9 +1,13 @@
 from time import time
+import logging
 
 import numpy as np
 from scipy import optimize
+from scipy import linalg
 from tqdm import tqdm
 import pandas as pd
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 def SE_kernel(X, l):
@@ -29,7 +33,7 @@ def cosine_kernel(X, p):
 
 
 def factor(K):
-    S, U = np.linalg.eigh(K)
+    S, U = linalg.eigh(K)
     # .clip removes negative eigenvalues
     return U, S.clip(0.)
 
@@ -148,9 +152,18 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
 
 
 def dyn_de(X, exp_tab, lengthscale=10, num=64):
+    logging.info('Making covariance matrix...')
+    t0 = time()
     K = SE_kernel(X, lengthscale)
+    t = time() - t0
+    logging.info('Done: {0:.2}s'.format(t))
+    logging.info('Factoring covariance...')
+    t0 = time()
     U, S = factor(K)
     UT1 = get_UT1(U)
+    t = time() - t0
+    logging.info('Done: {0:.2}s'.format(t))
+    logging.info('Fitting gene models')
     results = lengthscale_fits(exp_tab, U, UT1, S, num)
 
     return results
