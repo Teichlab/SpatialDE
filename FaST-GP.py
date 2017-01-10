@@ -1,3 +1,5 @@
+from time import time
+
 import numpy as np
 from scipy import optimize
 from tqdm import tqdm
@@ -129,15 +131,18 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         y = exp_tab.iloc[:, g]
         UTy = get_UTy(U, y)
 
+        t0 = time()
         max_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
         # max_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
         # max_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num)
+        t = time() - t0
         
         results.append({'g': exp_tab.columns[g],
                         'max_ll': max_ll,
                         'max_delta': max_delta,
                         'max_mu_hat': max_mu_hat,
-                        'max_s2_t_hat': max_s2_t_hat})
+                        'max_s2_t_hat': max_s2_t_hat,
+                        'time': t})
         
     return pd.DataFrame(results)
 
