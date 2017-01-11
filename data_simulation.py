@@ -6,7 +6,6 @@ fgp = __import__('FaST-GP')
 
 def make_ls_data(lengthscale, n_obs, n_sim):
     X = np.random.uniform(size=(n_obs, 1), low=0, high=100)
-    # X = np.linspace(0, 100, n_obs)[:, None]
     K = fgp.SE_kernel(X, lengthscale)
     I = np.eye(n_obs)
 
@@ -38,7 +37,7 @@ def make_multi_ls_data(l_min=1, l_max=100, n_obs=500, n_sim=500):
     true_values = pd.DataFrame(index=names, columns=['l', 'mu', 's2_t', 's2_e'])
 
     for g in tqdm(names):
-        l = np.random.uniform(low=l_min, high=l_max)
+        l = np.exp(np.random.uniform(low=np.log(l_min), high=np.log(l_max)))
         mu = np.random.uniform(low=0., high=5.)
         s2_t = np.exp(np.random.uniform(low=-5., high=5.))
         s2_e = np.exp(np.random.uniform(low=-5., high=5.))

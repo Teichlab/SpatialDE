@@ -100,7 +100,8 @@ def brent_max_LL(UTy, UT1, S, n):
 
 def lbfgsb_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 10)], maxfun=32, factr=1e12, epsilon=1e-4)
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 10)],
+                                                 maxfun=32, factr=1e12, epsilon=1e-4)
     max_ll = -f
     max_delta = np.exp(x[0])
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
@@ -151,19 +152,34 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
     return pd.DataFrame(results)
 
 
-def dyn_de(X, exp_tab, lengthscale=10, num=64):
-    logging.info('Making covariance matrix...')
+def dyn_de(X, exp_tab, kernel_space=None):
+    if kernel_space == None:
+        kernel_space = {
+            'SE': [5., 25., 50.]
+        }
+
+    logging.info('Pre-calculating USU^T = K\'s ...')
+    US_mats = []
     t0 = time()
-    K = SE_kernel(X, lengthscale)
+    for lengthscale in kernel_space['SE']:
+        K = SE_kernel(X, lengthscale)
+        U, S = factor(K)
+        UT1 = get_UT1(U)
+        US_mats.append({
+            'l': lengthscale,
+            'U': U,
+            'S': S,
+            'UT1': UT1
+        })
+
     t = time() - t0
     logging.info('Done: {0:.2}s'.format(t))
-    logging.info('Factoring covariance...')
-    t0 = time()
-    U, S = factor(K)
-    UT1 = get_UT1(U)
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
+
     logging.info('Fitting gene models')
-    results = lengthscale_fits(exp_tab, U, UT1, S, num)
+    results = []
+    for cov in US_mats:
+        result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'])
+        result['l'] = cov['l']
+        results.append(result)
 
     return results

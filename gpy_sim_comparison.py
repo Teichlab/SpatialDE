@@ -140,10 +140,25 @@ def compare_inference_speeds():
     plt.ylabel('Time (seconds)')
 
     plt.savefig('sim_speed.png')
+    
+
+def identify_lengthscale():
+    dfm = pd.read_csv('sim_data/dfm_multi_ls.csv', index_col=0)
+    X = pd.read_csv('sim_data/X_multi_ls.csv', index_col=0).as_matrix()
+
+    results = fgp.dyn_de(X, dfm, kernel_space={'SE': np.logspace(0., 2., 10)})
+    results = pd.concat(results).reset_index(drop=True)
+    results = results[results.groupby(['g'])['max_ll'].transform(max) == results['max_ll']]
+
+    true_vals = pd.read_csv('sim_data/true_vals_multi_ls.csv', index_col=0)
+    true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
+
+    return results, true_vals
 
 
 if __name__ == '__main__':
     # opt_simulation_inference_accuracy()
     # make_diff_cell_simulation_data()
     # compare_inference_speeds()
-    make_diff_ls_simulation_data()
+    # make_diff_ls_simulation_data()
+    results, true_vals = identify_lengthscale()
