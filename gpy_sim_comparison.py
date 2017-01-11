@@ -146,7 +146,11 @@ def identify_lengthscale():
     dfm = pd.read_csv('sim_data/dfm_multi_ls.csv', index_col=0)
     X = pd.read_csv('sim_data/X_multi_ls.csv', index_col=0).as_matrix()
 
-    results = fgp.dyn_de(X, dfm, kernel_space={'SE': np.logspace(0., 2., 10)})
+    ks = {
+        'SE': np.logspace(0., 2., 10),
+        'null': 0
+    }
+    results = fgp.dyn_de(X, dfm, kernel_space=ks)
     results = pd.concat(results).reset_index(drop=True)
     results = results[results.groupby(['g'])['max_ll'].transform(max) == results['max_ll']]
 

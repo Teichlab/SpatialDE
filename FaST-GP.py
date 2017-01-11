@@ -142,13 +142,38 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         # max_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num)
         t = time() - t0
         
-        results.append({'g': exp_tab.columns[g],
-                        'max_ll': max_ll,
-                        'max_delta': max_delta,
-                        'max_mu_hat': max_mu_hat,
-                        'max_s2_t_hat': max_s2_t_hat,
-                        'time': t})
+        results.append({
+            'g': exp_tab.columns[g],
+            'max_ll': max_ll,
+            'max_delta': max_delta,
+            'max_mu_hat': max_mu_hat,
+            'max_s2_t_hat': max_s2_t_hat,
+            'time': t
+        })
         
+    return pd.DataFrame(results)
+
+
+def null_fits(exp_tab):
+    ''' Get maximum LL for null model
+    '''
+    results = []
+    n, G = exp_tab.shape
+    for g in range(G):
+        y = exp_tab.iloc[:, g]
+        max_mu_hat = y.mean()
+        max_s2_e_hat = y.var()
+        max_ll = -0.5 * (n * np.log(2 * np.pi) + n + n * np.log(max_s2_e_hat))
+
+        results.append({
+            'g': exp_tab.columns[g],
+            'max_ll': max_ll,
+            'max_delta': np.inf,
+            'max_mu_hat': max_mu_hat,
+            'max_s2_t_hat': 0.,
+            'time': 0
+        })
+    
     return pd.DataFrame(results)
 
 
@@ -157,6 +182,13 @@ def dyn_de(X, exp_tab, kernel_space=None):
         kernel_space = {
             'SE': [5., 25., 50.]
         }
+
+    results = []
+
+    if 'null' in kernel_space:
+        result = null_fits(null_fits)
+        result['M'] = 1
+        results.append()
 
     logging.info('Pre-calculating USU^T = K\'s ...')
     US_mats = []
@@ -176,10 +208,10 @@ def dyn_de(X, exp_tab, kernel_space=None):
     logging.info('Done: {0:.2}s'.format(t))
 
     logging.info('Fitting gene models')
-    results = []
     for cov in US_mats:
         result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'])
         result['l'] = cov['l']
+        result['M'] = 3
         results.append(result)
 
     return results
