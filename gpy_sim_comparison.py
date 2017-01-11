@@ -99,6 +99,13 @@ def make_diff_cell_simulation_data(data_sizes=[50, 100, 250, 500, 1000]):
         true_vals.to_csv('sim_data/true_vals_{}.csv'.format(N))
 
 
+def make_diff_ls_simulation_data():
+    X, dfm, true_vals = ds.make_multi_ls_data()
+    pd.DataFrame(X).to_csv('sim_data/X_multi_ls.csv')
+    dfm.to_csv('sim_data/dfm_multi_ls.csv')
+    true_vals.to_csv('sim_data/true_vals_multi_ls.csv')
+
+
 def compare_inference_speeds():
     from glob import glob
 
@@ -138,4 +145,5 @@ def compare_inference_speeds():
 if __name__ == '__main__':
     # opt_simulation_inference_accuracy()
     # make_diff_cell_simulation_data()
-    compare_inference_speeds()
+    # compare_inference_speeds()
+    make_diff_ls_simulation_data()

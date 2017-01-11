@@ -91,12 +91,16 @@ def opt_simulation():
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
 
     plt.subplot(3, 1, 1)
-    plt.scatter(results['max_delta'], true_vals['delta'], c='k')
+    plt.scatter(results['max_delta'], true_vals['delta'], c='k', label=None)
     plt.xscale('log')
     plt.xlim(np.exp(-11.), np.exp(11.))
     plt.yscale('log')
     plt.ylim(np.exp(-11.), np.exp(11.))
-    plt.plot([1e-4, 1e4], [1e-4, 1e4], c='r')
+    plt.plot([1e-4, 1e4], [1e-4, 1e4], c='r', label='$ x = y $ line')
+
+    plt.legend(loc='upper left')
+
+    plt.ylabel('Ground truth $ \delta $')
 
     plt.subplot(3, 1, 2)
     plt.scatter(results['max_s2_t_hat'], true_vals['s2_t'], c='k')
@@ -105,12 +109,16 @@ def opt_simulation():
     plt.yscale('log')
     plt.ylim(np.exp(-6.), np.exp(6.))
     plt.plot([1e-2, 1e2], [1e-2, 1e2], c='r')
+    plt.ylabel('Ground truth $ \sigma_t^2 $')
 
     plt.subplot(3, 1, 3)
     plt.scatter(results['max_mu_hat'], true_vals['mu'], c='k')
     plt.xlim(-1, 6)
     plt.ylim(-1, 6)
     plt.plot([0, 5], [0, 5], c='r')
+    plt.ylabel('Ground truth $ \mu $')
+
+    plt.xlabel('Inferred Value')
 
     plt.savefig('simulation_accuracy.png')
 
