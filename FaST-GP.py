@@ -186,9 +186,9 @@ def dyn_de(X, exp_tab, kernel_space=None):
     results = []
 
     if 'null' in kernel_space:
-        result = null_fits(null_fits)
+        result = null_fits(exp_tab)
         result['M'] = 1
-        results.append()
+        results.append(result)
 
     logging.info('Pre-calculating USU^T = K\'s ...')
     US_mats = []

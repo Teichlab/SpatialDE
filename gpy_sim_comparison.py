@@ -152,7 +152,8 @@ def identify_lengthscale():
     }
     results = fgp.dyn_de(X, dfm, kernel_space=ks)
     results = pd.concat(results).reset_index(drop=True)
-    results = results[results.groupby(['g'])['max_ll'].transform(max) == results['max_ll']]
+    results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(500)
+    results = results[results.groupby(['g'])['BIC'].transform(min) == results['BIC']]
 
     true_vals = pd.read_csv('sim_data/true_vals_multi_ls.csv', index_col=0)
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
