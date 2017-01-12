@@ -4,7 +4,10 @@ import numpy as np
 from tqdm import tqdm
 import GPy
 import pandas as pd
+
 from matplotlib import pyplot as plt
+from matplotlib import cm
+
 import GPflow
 
 fgp = __import__('FaST-GP')
@@ -148,11 +151,11 @@ def identify_lengthscale():
 
     ks = {
         'SE': np.logspace(0., 2., 10),
+        'linear': 0,
+        'const': 0,
         'null': 0
     }
     results = fgp.dyn_de(X, dfm, kernel_space=ks)
-    results = pd.concat(results).reset_index(drop=True)
-    results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(500)
     results = results[results.groupby(['g'])['BIC'].transform(min) == results['BIC']]
 
     true_vals = pd.read_csv('sim_data/true_vals_multi_ls.csv', index_col=0)
@@ -167,3 +170,19 @@ if __name__ == '__main__':
     # compare_inference_speeds()
     # make_diff_ls_simulation_data()
     results, true_vals = identify_lengthscale()
+
+    plt.figure()
+    plt.loglog()
+    plt.scatter(results['l'], true_vals.loc[results['g'], 'l'], c=np.log10(true_vals['delta']),
+                cmap=cm.magma, edgecolor='none', s=30)
+    plt.colorbar()
+    plt.savefig('inferred_lengthscales.png')
+
+    plt.figure()
+    plt.loglog()
+    plt.scatter(results['max_delta'], true_vals.loc[results['g'], 'delta'], c=np.log10(true_vals['l']),
+                cmap=cm.magma, edgecolor='none', s=30)
+    plt.colorbar()
+    plt.savefig('inferred_delta.png')
+
+    print(results.model.value_counts())

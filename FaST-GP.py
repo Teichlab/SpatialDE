@@ -148,7 +148,8 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
             'max_delta': max_delta,
             'max_mu_hat': max_mu_hat,
             'max_s2_t_hat': max_s2_t_hat,
-            'time': t
+            'time': t,
+            'n': n
         })
         
     return pd.DataFrame(results)
@@ -156,6 +157,30 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
 
 def null_fits(exp_tab):
     ''' Get maximum LL for null model
+    '''
+    results = []
+    n, G = exp_tab.shape
+    for g in range(G):
+        y = exp_tab.iloc[:, g]
+        max_mu_hat = 0.
+        max_s2_e_hat = np.square(y).sum() / n  # mll estimate
+        max_ll = -0.5 * (n * np.log(2 * np.pi) + n + n * np.log(max_s2_e_hat))
+
+        results.append({
+            'g': exp_tab.columns[g],
+            'max_ll': max_ll,
+            'max_delta': np.inf,
+            'max_mu_hat': max_mu_hat,
+            'max_s2_t_hat': 0.,
+            'time': 0,
+            'n': n
+        })
+    
+    return pd.DataFrame(results)
+
+
+def const_fits(exp_tab):
+    ''' Get maximum LL for const model
     '''
     results = []
     n, G = exp_tab.shape
@@ -171,7 +196,8 @@ def null_fits(exp_tab):
             'max_delta': np.inf,
             'max_mu_hat': max_mu_hat,
             'max_s2_t_hat': 0.,
-            'time': 0
+            'time': 0,
+            'n': n
         })
     
     return pd.DataFrame(results)
@@ -187,17 +213,41 @@ def dyn_de(X, exp_tab, kernel_space=None):
 
     if 'null' in kernel_space:
         result = null_fits(exp_tab)
+        result['l'] = np.nan
         result['M'] = 1
+        result['model'] = 'null'
+        results.append(result)
+
+    if 'const' in kernel_space:
+        result = const_fits(exp_tab)
+        result['l'] = np.nan
+        result['M'] = 2
+        result['model'] = 'const'
         results.append(result)
 
     logging.info('Pre-calculating USU^T = K\'s ...')
     US_mats = []
     t0 = time()
+    if 'linear' in kernel_space:
+        K = linear_kernel(X)
+        U, S = factor(K)
+        UT1 = get_UT1(U)
+        US_mats.append({
+            'model': 'linear',
+            'M': 3,
+            'l': np.nan,
+            'U': U,
+            'S': S,
+            'UT1': UT1
+        })
+
     for lengthscale in kernel_space['SE']:
         K = SE_kernel(X, lengthscale)
         U, S = factor(K)
         UT1 = get_UT1(U)
         US_mats.append({
+            'model': 'SE',
+            'M': 4,
             'l': lengthscale,
             'U': U,
             'S': S,
@@ -211,7 +261,11 @@ def dyn_de(X, exp_tab, kernel_space=None):
     for cov in US_mats:
         result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'])
         result['l'] = cov['l']
-        result['M'] = 3
+        result['M'] = cov['M']
+        result['model'] = cov['model']
         results.append(result)
+
+    results = pd.concat(results).reset_index(drop=True)
+    results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(results['n'])
 
     return results
