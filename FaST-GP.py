@@ -241,18 +241,33 @@ def dyn_de(X, exp_tab, kernel_space=None):
             'UT1': UT1
         })
 
-    for lengthscale in kernel_space['SE']:
-        K = SE_kernel(X, lengthscale)
-        U, S = factor(K)
-        UT1 = get_UT1(U)
-        US_mats.append({
-            'model': 'SE',
-            'M': 4,
-            'l': lengthscale,
-            'U': U,
-            'S': S,
-            'UT1': UT1
-        })
+    if 'SE' in kernel_space:
+        for lengthscale in kernel_space['SE']:
+            K = SE_kernel(X, lengthscale)
+            U, S = factor(K)
+            UT1 = get_UT1(U)
+            US_mats.append({
+                'model': 'SE',
+                'M': 4,
+                'l': lengthscale,
+                'U': U,
+                'S': S,
+                'UT1': UT1
+            })
+
+    if 'PER' in kernel_space:
+        for period in kernel_space['PER']:
+            K = cosine_kernel(X, period)
+            U, S = factor(K)
+            UT1 = get_UT1(U)
+            US_mats.append({
+                'model': 'PER',
+                'M': 4,
+                'l': period,
+                'U': U,
+                'S': S,
+                'UT1': UT1
+            })
 
     t = time() - t0
     logging.info('Done: {0:.2}s'.format(t))

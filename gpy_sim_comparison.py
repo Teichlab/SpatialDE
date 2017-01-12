@@ -150,6 +150,7 @@ def identify_lengthscale():
     X = pd.read_csv('sim_data/X_multi_ls.csv', index_col=0).as_matrix()
 
     ks = {
+        # 'PER': np.logspace(0., 2., 10),
         'SE': np.logspace(0., 2., 10),
         'linear': 0,
         'const': 0,
@@ -175,6 +176,8 @@ if __name__ == '__main__':
     plt.loglog()
     plt.scatter(results['l'], true_vals.loc[results['g'], 'l'], c=np.log10(true_vals['delta']),
                 cmap=cm.magma, edgecolor='none', s=30)
+    plt.plot([1e0, 1e2], [1e0, 1e2], c='w', lw=3)
+    plt.plot([1e0, 1e2], [1e0, 1e2], c='r')
     plt.colorbar()
     plt.savefig('inferred_lengthscales.png')
 
@@ -182,6 +185,8 @@ if __name__ == '__main__':
     plt.loglog()
     plt.scatter(results['max_delta'], true_vals.loc[results['g'], 'delta'], c=np.log10(true_vals['l']),
                 cmap=cm.magma, edgecolor='none', s=30)
+    plt.plot([1e-3, 1e2], [1e-3, 1e2], c='w', lw=3)
+    plt.plot([1e-3, 1e2], [1e-3, 1e2], c='r')
     plt.colorbar()
     plt.savefig('inferred_delta.png')
 
