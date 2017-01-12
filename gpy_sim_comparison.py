@@ -178,16 +178,24 @@ if __name__ == '__main__':
                 cmap=cm.magma, edgecolor='none', s=30)
     plt.plot([1e0, 1e2], [1e0, 1e2], c='w', lw=3)
     plt.plot([1e0, 1e2], [1e0, 1e2], c='r')
-    plt.colorbar()
+    plt.colorbar(label='Ground truth log10(delta)')
+    plt.xlabel('Inferred lenthscale')
+    plt.ylabel('Ground truth lenthscale')
     plt.savefig('inferred_lengthscales.png')
 
     plt.figure()
     plt.loglog()
     plt.scatter(results['max_delta'], true_vals.loc[results['g'], 'delta'], c=np.log10(true_vals['l']),
                 cmap=cm.magma, edgecolor='none', s=30)
+    plt.colorbar(label='Grount truth log10(lengthscale)')
+
+    r = results.query('model == "linear"')
+    plt.scatter(r['max_delta'], true_vals.loc[r['g'], 'delta'], marker='_', s=30, c='k')
+
     plt.plot([1e-3, 1e2], [1e-3, 1e2], c='w', lw=3)
     plt.plot([1e-3, 1e2], [1e-3, 1e2], c='r')
-    plt.colorbar()
+    plt.xlabel('Inferred delta')
+    plt.ylabel('Ground truth delta')
     plt.savefig('inferred_delta.png')
 
     print(results.model.value_counts())
