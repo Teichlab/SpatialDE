@@ -162,16 +162,6 @@ def identify_lengthscale():
     true_vals = pd.read_csv('sim_data/true_vals_multi_ls.csv', index_col=0)
     true_vals['delta'] = true_vals['s2_e'] / true_vals['s2_t']
 
-    return results, true_vals
-
-
-if __name__ == '__main__':
-    # opt_simulation_inference_accuracy()
-    # make_diff_cell_simulation_data()
-    # compare_inference_speeds()
-    # make_diff_ls_simulation_data()
-    results, true_vals = identify_lengthscale()
-
     plt.figure()
     plt.loglog()
     plt.scatter(results['l'], true_vals.loc[results['g'], 'l'], c=np.log10(true_vals['delta']),
@@ -199,3 +189,13 @@ if __name__ == '__main__':
     plt.savefig('inferred_delta.png')
 
     print(results.model.value_counts())
+
+    return results, true_vals
+
+
+if __name__ == '__main__':
+    # opt_simulation_inference_accuracy()
+    # make_diff_cell_simulation_data()
+    # compare_inference_speeds()
+    # make_diff_ls_simulation_data()
+    results, true_vals = identify_lengthscale()
