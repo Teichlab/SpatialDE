@@ -150,7 +150,7 @@ def identify_lengthscale():
     X = pd.read_csv('sim_data/X_multi_ls.csv', index_col=0).as_matrix()
 
     ks = {
-        # 'PER': np.logspace(0., 2., 10),
+        'PER': np.logspace(0., 2., 5),
         'SE': np.logspace(0., 2., 10),
         'linear': 0,
         'const': 0,
@@ -164,23 +164,34 @@ def identify_lengthscale():
 
     plt.figure()
     plt.loglog()
-    plt.scatter(results['l'], true_vals.loc[results['g'], 'l'], c=np.log10(true_vals['delta']),
+    r = results.query('model == "SE"')
+    plt.scatter(r['l'], true_vals.loc[r['g'], 'l'],
+                c=np.log10(true_vals.loc[r['g'], 'delta']),
                 cmap=cm.magma, edgecolor='none', s=30)
+
     plt.plot([1e0, 1e2], [1e0, 1e2], c='w', lw=3)
     plt.plot([1e0, 1e2], [1e0, 1e2], c='r')
     plt.colorbar(label='Ground truth log10(delta)')
-    plt.xlabel('Inferred lenthscale')
-    plt.ylabel('Ground truth lenthscale')
+
+    plt.xlabel('Inferred lengthscale')
+    plt.ylabel('Ground truth lengthscale')
     plt.savefig('inferred_lengthscales.png')
 
     plt.figure()
     plt.loglog()
-    plt.scatter(results['max_delta'], true_vals.loc[results['g'], 'delta'], c=np.log10(true_vals['l']),
+    plt.scatter(results['max_delta'], true_vals.loc[results['g'], 'delta'],
+                c=np.log10(true_vals.loc[results['g'], 'l']),
                 cmap=cm.magma, edgecolor='none', s=30)
+
     plt.colorbar(label='Grount truth log10(lengthscale)')
 
     r = results.query('model == "linear"')
-    plt.scatter(r['max_delta'], true_vals.loc[r['g'], 'delta'], marker='_', s=30, c='k')
+    plt.scatter(r['max_delta'], true_vals.loc[r['g'], 'delta'], marker='_', s=50, c='w', lw=2.0)
+    plt.scatter(r['max_delta'], true_vals.loc[r['g'], 'delta'], marker='_', s=50, c='g', lw=0.5)
+
+    r = results.query('model == "PER"')
+    plt.scatter(r['max_delta'], true_vals.loc[r['g'], 'delta'], marker='|', s=50, c='w', lw=2.0)
+    plt.scatter(r['max_delta'], true_vals.loc[r['g'], 'delta'], marker='|', s=50, c='g', lw=0.5)
 
     plt.plot([1e-3, 1e2], [1e-3, 1e2], c='w', lw=3)
     plt.plot([1e-3, 1e2], [1e-3, 1e2], c='r')
