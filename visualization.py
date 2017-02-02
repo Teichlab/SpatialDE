@@ -106,6 +106,6 @@ def period_sample_1d(p_list=[3, 10, 30, 100], xmin=5, xmax=30):
 if __name__ == '__main__':
     # ls_sample_2d([1., 5., 10., 20.])
     # linear_sample_2d()
-    # period_sample_2d([1., 5., 10., 20.])
+    period_sample_2d([3., 10., 30., 100.], xmin=0., xmax=200, ymin=0., ymax=250)
     # ls_sample_1d([1., 5., 10., 20.])
-    period_sample_1d([1., 5., 10., 20.])
+    # period_sample_1d([1., 5., 10., 20.])
