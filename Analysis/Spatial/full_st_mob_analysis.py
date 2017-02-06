@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-fgp = __import__('FaST-GP')
+import fastgp as fgp
 
 
 def get_coords(index):
@@ -12,29 +11,26 @@ def get_coords(index):
     return coords
 
 
-def main(l=5):
-    df = pd.read_table('data/Rep7_MOB_count_matrix-1.tsv', index_col=0)
+def main():
+    df = pd.read_csv('data/Rep11_MOB_0.csv', index_col=0)
     sample_info = get_coords(df.index)
     
     X = sample_info[['x', 'y']]
     dfm = np.log10(df + 1)
-    results_Rep7 = fgp.dyn_de(X, dfm, lengthscale=l)
 
-    df = pd.read_table('data/Rep8_MOB_count_matrix-1.tsv', index_col=0)
-    sample_info = get_coords(df.index)
-    
-    X = sample_info[['x', 'y']]
-    dfm = np.log10(df + 1)
-    results_Rep8 = fgp.dyn_de(X, dfm, lengthscale=l)
+    ks = {
+        'PER': np.logspace(0., np.log10(40), 5),
+        'SE': np.logspace(0., np.log10(40), 10),
+        'linear': 0,
+        'const': 0,
+        'null': 0
+    }
+    results = fgp.dyn_de(X, dfm, kernel_space=ks)
+    results = results[results.groupby(['g'])['BIC'].transform(min) == results['BIC']]
 
-    idx = results_Rep7.index.intersection(results_Rep8.index)
-
-    # plt.loglog()
-    # plt.scatter(results_Rep7.loc[idx, 'max_delta'], results_Rep8.loc[idx, 'max_delta'])
-    # plt.show()
-
-    return results_Rep7.loc[idx], results_Rep8.loc[idx]
+    return results 
 
 
-# if __name__ == '__main__':
-#     main()
+
+if __name__ == '__main__':
+    results = main()
