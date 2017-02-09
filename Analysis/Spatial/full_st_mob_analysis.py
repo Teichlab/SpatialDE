@@ -19,17 +19,14 @@ def main():
     dfm = np.log10(df + 1)
 
     ks = {
-        'PER': np.logspace(0., np.log10(40), 5),
-        'SE': np.logspace(0., np.log10(40), 10),
+        'PER': np.logspace(-1., np.log10(40), 10),
+        'SE': np.logspace(-1., np.log10(40), 10),
         'linear': 0,
-        'const': 0,
-        'null': 0
+        'const': 0
     }
     results = fgp.dyn_de(X, dfm, kernel_space=ks)
-    results = results[results.groupby(['g'])['BIC'].transform(min) == results['BIC']]
 
     return results 
-
 
 
 if __name__ == '__main__':

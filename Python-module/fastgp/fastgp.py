@@ -75,7 +75,8 @@ def LL(delta, UTy, UT1, S, n):
     sum_1 = (np.square(UTy - UT1 * mu_h) / (S + delta)).sum()
     sum_2 = np.log(S + delta).sum()
 
-    return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
+    with np.errstate(divide='ignore'):
+        return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
 
 
 def make_objective(UTy, UT1, S, n):
