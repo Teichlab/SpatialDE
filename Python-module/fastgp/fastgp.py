@@ -219,7 +219,7 @@ def simulate_const_model(MLL_params, N):
 
 
 def get_mll_results(results, null_model='const'):
-    null_lls = results.query('model == "{}"'.format(null_model))['g', 'max_ll']
+    null_lls = results.query('model == "{}"'.format(null_model))[['g', 'max_ll']]
     model_results = results.query('model != "{}"'.format(null_model))
     model_results = model_results[model_results.groupby(['g'])['max_ll'].transform(max) == model_results['max_ll']]
     mll_results = model_results.merge(null_lls, on='g',)
