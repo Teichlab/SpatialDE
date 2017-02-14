@@ -4,6 +4,7 @@ import logging
 import numpy as np
 from scipy import optimize
 from scipy import linalg
+from scipy import stats
 from tqdm import tqdm
 import pandas as pd
 
@@ -204,6 +205,29 @@ def const_fits(exp_tab):
     return pd.DataFrame(results)
 
 
+def simulate_const_model(MLL_params, N):
+    I = np.eye(N)
+    O = np.ones(N)
+    dfm = np.zeros((N, MLL_params.shape[0]))
+    for i, params in enumerate(MLL_params.iterrows()):
+        params = params[1]
+        s2_e = params.max_s2_t_hat * params.max_delta
+        dfm[:, i] = np.random.multivariate_normal(params.max_mu_hat * O, s2_e * I)
+        
+    dfm = pd.DataFrame(dfm)
+    return dfm
+
+
+def get_mll_results(results, null_model='const'):
+    null_lls = results.query('model == "{}"'.format(null_model))['g', 'max_ll']
+    model_results = results.query('model != "{}"'.format(null_model))
+    model_results = model_results[model_results.groupby(['g'])['max_ll'].transform(max) == model_results['max_ll']]
+    mll_results = model_results.merge(null_lls, on='g',)
+    mll_results['D'] = mll_results['max_ll_x'] - mll_results['max_ll_y']
+
+    return mll_results
+
+
 def dyn_de(X, exp_tab, kernel_space=None):
     if kernel_space == None:
         kernel_space = {
@@ -285,3 +309,37 @@ def dyn_de(X, exp_tab, kernel_space=None):
     results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(results['n'])
 
     return results
+
+
+def run(X, exp_tab, kernel_space=None, pvalues=True, null_model_samples=10000):
+    logging.info('Performing DE test')
+    results = dyn_de(X, exp_tab, kernel_space)
+    mll_results = get_mll_results(results)
+    if not pvalues:
+        return mll_results
+
+    logging.info('Simulating {} null models'.format(null_model_samples))
+    t0 = time()
+    sim_null_exp_tab = simulate_const_model(mll_results.sample(null_model_samples))
+    t = time() - t0
+    logging.info('Done: {0:.2}s'.format(t))
+
+    logging.info('Performing DE test on null models'.format(null_model_samples))
+    t0 = time()
+    sim_results = dyn_de(X, sim_null_exp_tab, kernel_space)
+    sim_mll_results = get_mll_results(sim_results)
+    t = time() - t0
+    logging.info('Done: {0:.2}s'.format(t))
+
+    logging.info('Fitting null distribution')
+    t0 = time()
+    gamma_parameters = stats.gamma.fit(sim_mll_results['D'])
+    gamma_rv = stats.gamma(*gamma_parameters)
+    t = time() - t0
+    logging.info('Done: {0:.2}s'.format(t))
+
+    mll_results['pval'] = gamma_rv.sf(mll_results['D'])
+    mll_results['qval'] = mll_results['pval'] * mll_results.shape[0]
+    mll_results['qval'] = mll_results['qval'].map(lambda p: p if p < 1. else 1)
+
+    return mll_results
