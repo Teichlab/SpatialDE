@@ -206,13 +206,11 @@ def const_fits(exp_tab):
 
 
 def simulate_const_model(MLL_params, N):
-    I = np.eye(N)
-    O = np.ones(N)
     dfm = np.zeros((N, MLL_params.shape[0]))
     for i, params in enumerate(MLL_params.iterrows()):
         params = params[1]
         s2_e = params.max_s2_t_hat * params.max_delta
-        dfm[:, i] = np.random.multivariate_normal(params.max_mu_hat * O, s2_e * I)
+        dfm[:, i] = np.random.normal(params.max_mu_hat, s2_e, N)
         
     dfm = pd.DataFrame(dfm)
     return dfm
