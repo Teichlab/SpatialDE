@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-        name='fastgp',
-        version='0.1.0',
+        name='SpatialDE',
+        version='0.2.0',
         description='Spatial and Temporal DE test',
         packages=find_packages(),
         install_requires=['numpy', 'pandas', 'tqdm'],
