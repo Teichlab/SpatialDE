@@ -1,3 +1,4 @@
+import sys
 from time import time
 import logging
 
@@ -9,6 +10,19 @@ from tqdm import tqdm
 import pandas as pd
 
 logging.basicConfig(level=logging.DEBUG)
+
+
+def get_l_limits(X):
+    Xsq = np.sum(np.square(X), 1)
+    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = np.clip(R2, 0, np.inf)
+    R_vals = np.unique(R2.flatten())
+    R_vals = R_vals[R_vals > 1e-8]
+    
+    l_min = np.sqrt(R_vals.min()) / 2.
+    l_max = np.sqrt(R_vals.max()) * 2.
+    
+    return l_min, l_max
 
 
 def SE_kernel(X, l):
@@ -134,14 +148,12 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
     '''
     results = []
     n, G = exp_tab.shape
-    for g in tqdm(range(G)):
+    for g in tqdm(range(G), leave=False):
         y = exp_tab.iloc[:, g]
         UTy = get_UTy(U, y)
 
         t0 = time()
         max_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
-        # max_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
-        # max_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num)
         t = time() - t0
         
         results.append({
@@ -296,7 +308,9 @@ def dyn_de(X, exp_tab, kernel_space=None):
     logging.info('Done: {0:.2}s'.format(t))
 
     logging.info('Fitting gene models')
-    for cov in US_mats:
+    n_models = len(US_mats)
+    for i, cov in enumerate(US_mats):
+        logging.info('Model {} of {}'.format(i + 1, n_models))
         result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'])
         result['l'] = cov['l']
         result['M'] = cov['M']
@@ -310,6 +324,14 @@ def dyn_de(X, exp_tab, kernel_space=None):
 
 
 def run(X, exp_tab, kernel_space=None, pvalues=True, null_model_samples=10000):
+    if kernel_space == None:
+        l_min, l_max = get_l_limits(X)
+        kernel_space = {
+            'PER': np.logspace(np.log10(l_min), np.log10(l_max), 10),
+            'SE': np.logspace(np.log10(l_min), np.log10(l_max), 10),
+            'const': 0
+        }
+
     logging.info('Performing DE test')
     results = dyn_de(X, exp_tab, kernel_space)
     mll_results = get_mll_results(results)
