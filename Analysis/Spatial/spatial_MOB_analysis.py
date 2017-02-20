@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-import fastgp as fgp
+import SpatialDE as sde
 
 
 def get_coords(index):
@@ -13,18 +13,22 @@ def get_coords(index):
 
 def main():
     df = pd.read_csv('data/Rep11_MOB_0.csv', index_col=0)
+    df = df.T[df.sum(0) >= 3].T  # Filter practically unobserved genes
+    
+    # Get coordinates for each sample
     sample_info = get_coords(df.index)
     
     X = sample_info[['x', 'y']]
+
+    # Convert data to log-scale
     dfm = np.log10(df + 1)
 
-    ks = {
-        'PER': np.logspace(-1., np.log10(40), 10),
-        'SE': np.logspace(-1., np.log10(40), 10),
-        'linear': 0,
-        'const': 0
-    }
-    results = fgp.dyn_de(X, dfm, kernel_space=ks)
+    # Perform Spatial DE test with default settings
+    results = sde.run(X, dfm)
+
+    # Save results and annotation in files for interactive plotting and interpretation
+    sample_info.to_csv('MOB_sample_info.csv')
+    results.to_csv('MOB_final_results.csv')
 
     return results 
 
