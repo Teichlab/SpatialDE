@@ -340,7 +340,8 @@ def run(X, exp_tab, kernel_space=None, pvalues=True, null_model_samples=10000):
 
     logging.info('Simulating {} null models'.format(null_model_samples))
     t0 = time()
-    sim_null_exp_tab = simulate_const_model(mll_results.sample(null_model_samples), exp_tab.shape[0])
+    sample_mlls = mll_results.sample(null_model_samples, replace=True)
+    sim_null_exp_tab = simulate_const_model(sample_mlls, exp_tab.shape[0])
     t = time() - t0
     logging.info('Done: {0:.2}s'.format(t))
 
