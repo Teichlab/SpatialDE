@@ -327,7 +327,6 @@ def run(X, exp_tab, kernel_space=None, pvalues=True, null_model_samples=10000):
     if kernel_space == None:
         l_min, l_max = get_l_limits(X)
         kernel_space = {
-            'PER': np.logspace(np.log10(l_min), np.log10(l_max), 10),
             'SE': np.logspace(np.log10(l_min), np.log10(l_max), 10),
             'const': 0
         }
