@@ -116,7 +116,7 @@ def brent_max_LL(UTy, UT1, S, n):
 
 def lbfgsb_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 10)],
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 20)],
                                                  maxfun=32, factr=1e12, epsilon=1e-4)
     max_ll = -f
     max_delta = np.exp(x[0])
@@ -202,7 +202,8 @@ def const_fits(exp_tab):
         y = exp_tab.iloc[:, g]
         max_mu_hat = y.mean()
         max_s2_e_hat = y.var()
-        max_ll = -0.5 * (n * np.log(2 * np.pi) + n + n * np.log(max_s2_e_hat))
+        sum1 = np.square(y - max_mu_hat).sum()
+        max_ll = -0.5 * ( n * np.log(max_s2_e_hat) + sum1 / max_s2_e_hat + n * np.log(2 * np.pi) )
 
         results.append({
             'g': exp_tab.columns[g],
