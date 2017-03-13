@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 
-import SpatialDE as sde
+import NaiveDE
+import SpatialDE
 
 
 def get_coords(index):
@@ -15,11 +16,15 @@ def main():
     df = pd.read_table('data/Layer2_BC_count_matrix-1.tsv', index_col=0)
     df = df.T[df.sum(0) >= 3].T  # Filter practically unobserved genes
     sample_info = get_coords(df.index)
+    sample_info['total_counts'] = df.sum(1)
+    sample_info = sample_info.query('total_counts > 5')  # Remove empty features
+    df = df.loc[sample_info.index]
 
     X = sample_info[['x', 'y']]
-    dfm = np.log10(df + 1)
+    dfm = NaiveDE.stabilize(df.T).T
+    res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_counts)').T
 
-    results = sde.run(X, dfm)
+    results = SpatialDE.run(X, res)
 
     sample_info.to_csv('BC_sample_info.csv')
     results.to_csv('BC_final_results.csv')
