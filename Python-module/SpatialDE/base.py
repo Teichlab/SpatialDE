@@ -116,8 +116,7 @@ def brent_max_LL(UTy, UT1, S, n):
 
 def lbfgsb_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 20)],
-                                                 maxfun=32, factr=1e12, epsilon=1e-4)
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 20)])
     max_ll = -f
     max_delta = np.exp(x[0])
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
@@ -233,8 +232,8 @@ def get_mll_results(results, null_model='const'):
     null_lls = results.query('model == "{}"'.format(null_model))[['g', 'max_ll']]
     model_results = results.query('model != "{}"'.format(null_model))
     model_results = model_results[model_results.groupby(['g'])['max_ll'].transform(max) == model_results['max_ll']]
-    mll_results = model_results.merge(null_lls, on='g',)
-    mll_results['D'] = mll_results['max_ll_x'] - mll_results['max_ll_y']
+    mll_results = model_results.merge(null_lls, on='g', suffixes=('', '_null'))
+    mll_results['D'] = mll_results['max_ll'] - mll_results['max_ll_null']
 
     return mll_results
 
