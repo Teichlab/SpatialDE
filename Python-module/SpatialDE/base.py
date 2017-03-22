@@ -323,7 +323,7 @@ def dyn_de(X, exp_tab, kernel_space=None):
     return results
 
 
-def run(X, exp_tab, kernel_space=None, pvalues=True, null_model_samples=10000):
+def run(X, exp_tab, kernel_space=None):
     if kernel_space == None:
         l_min, l_max = get_l_limits(X)
         kernel_space = {
@@ -334,31 +334,8 @@ def run(X, exp_tab, kernel_space=None, pvalues=True, null_model_samples=10000):
     logging.info('Performing DE test')
     results = dyn_de(X, exp_tab, kernel_space)
     mll_results = get_mll_results(results)
-    if not pvalues:
-        return mll_results
 
-    logging.info('Simulating {} null models'.format(null_model_samples))
-    t0 = time()
-    sample_mlls = mll_results.sample(null_model_samples, replace=True)
-    sim_null_exp_tab = simulate_const_model(sample_mlls, exp_tab.shape[0])
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
-
-    logging.info('Performing DE test on null models'.format(null_model_samples))
-    t0 = time()
-    sim_results = dyn_de(X, sim_null_exp_tab, kernel_space)
-    sim_mll_results = get_mll_results(sim_results)
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
-
-    logging.info('Fitting null distribution')
-    t0 = time()
-    gamma_parameters = stats.gamma.fit(sim_mll_results['D'])
-    gamma_rv = stats.gamma(*gamma_parameters)
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
-
-    mll_results['pval'] = gamma_rv.sf(mll_results['D'])
+    mll_results['pval'] = 1 - stats.chi2.cdf(sim_mll_results['D'], df=1)
     mll_results['qval'] = mll_results['pval'] * mll_results.shape[0]
     mll_results['qval'] = mll_results['qval'].map(lambda p: p if p < 1. else 1)
 
