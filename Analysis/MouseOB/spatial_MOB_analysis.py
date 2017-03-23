@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 
-import SpatialDE as sde
+import NaiveDE
+import SpatialDE
 
 
 def get_coords(index):
@@ -17,14 +18,18 @@ def main():
     
     # Get coordinates for each sample
     sample_info = get_coords(df.index)
+    sample_info['total_counts'] = df.sum(1)
+    sample_info = sample_info.query('total_counts > 5')  # Remove empty features
+    df = df.loc[sample_info.index]
     
     X = sample_info[['x', 'y']]
 
-    # Convert data to log-scale
-    dfm = np.log10(df + 1)
+    # Convert data to log-scale, and account for depth
+    dfm = NaiveDE.stabilize(df.T).T
+    res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_counts)').T
 
     # Perform Spatial DE test with default settings
-    results = sde.run(X, dfm)
+    results = SpatialDE.run(X, res)
 
     # Save results and annotation in files for interactive plotting and interpretation
     sample_info.to_csv('MOB_sample_info.csv')
