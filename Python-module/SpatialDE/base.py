@@ -9,6 +9,8 @@ from scipy import stats
 from tqdm import tqdm
 import pandas as pd
 
+from .util import qvalue
+
 logging.basicConfig(level=logging.DEBUG)
 
 
@@ -104,8 +106,6 @@ def make_objective(UTy, UT1, S, n):
 def brent_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
     o = optimize.minimize_scalar(LL_obj, bounds=[-10, 10], method='bounded', options={'maxiter': 32})
-    # o = optimize.minimize_scalar(LL_obj)
-    #  o.nfev has the number of function evals
     max_ll = -o.fun
     max_delta = np.exp(o.x)
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
@@ -116,7 +116,8 @@ def brent_max_LL(UTy, UT1, S, n):
 
 def lbfgsb_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 20)])
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 20)],
+                                                 maxfun=32, factr=1e12, epsilon=1e-4)
     max_ll = -f
     max_delta = np.exp(x[0])
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
@@ -335,8 +336,7 @@ def run(X, exp_tab, kernel_space=None):
     results = dyn_de(X, exp_tab, kernel_space)
     mll_results = get_mll_results(results)
 
-    mll_results['pval'] = 1 - stats.chi2.cdf(sim_mll_results['D'], df=1)
-    mll_results['qval'] = mll_results['pval'] * mll_results.shape[0]
-    mll_results['qval'] = mll_results['qval'].map(lambda p: p if p < 1. else 1)
+    mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['D'], df=1)
+    mll_results['qval'] = qvalue(mll_results['pval'])
 
     return mll_results
