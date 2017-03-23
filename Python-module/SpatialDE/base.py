@@ -234,7 +234,7 @@ def get_mll_results(results, null_model='const'):
     model_results = results.query('model != "{}"'.format(null_model))
     model_results = model_results[model_results.groupby(['g'])['max_ll'].transform(max) == model_results['max_ll']]
     mll_results = model_results.merge(null_lls, on='g', suffixes=('', '_null'))
-    mll_results['D'] = mll_results['max_ll'] - mll_results['max_ll_null']
+    mll_results['LLR'] = mll_results['max_ll'] - mll_results['max_ll_null']
 
     return mll_results
 
@@ -336,7 +336,7 @@ def run(X, exp_tab, kernel_space=None):
     results = dyn_de(X, exp_tab, kernel_space)
     mll_results = get_mll_results(results)
 
-    mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['D'], df=1)
+    mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
     mll_results['qval'] = qvalue(mll_results['pval'])
 
     return mll_results
