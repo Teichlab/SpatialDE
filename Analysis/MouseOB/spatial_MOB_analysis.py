@@ -19,7 +19,7 @@ def main():
     # Get coordinates for each sample
     sample_info = get_coords(df.index)
     sample_info['total_counts'] = df.sum(1)
-    sample_info = sample_info.query('total_counts > 5')  # Remove empty features
+    sample_info = sample_info.query('total_counts > 10')  # Remove empty features
     df = df.loc[sample_info.index]
     
     X = sample_info[['x', 'y']]
