@@ -325,6 +325,14 @@ def dyn_de(X, exp_tab, kernel_space=None):
 
 
 def run(X, exp_tab, kernel_space=None):
+    ''' Perform SpatialDE test
+
+    X : matrix of spatial coordinates times observations
+    exp_tab : Expression table, assumed appropriatealy normalised.
+
+    The grid of covariance matrices to search over for the alternative
+    model can be specifiec using the kernel_space paramter.
+    '''
     if kernel_space == None:
         l_min, l_max = get_l_limits(X)
         kernel_space = {
@@ -340,3 +348,24 @@ def run(X, exp_tab, kernel_space=None):
     mll_results['qval'] = qvalue(mll_results['pval'])
 
     return mll_results
+
+
+def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
+    ''' Compare model fits with different models.
+
+    This way DE genes can be classified to interpretable function classes.
+
+    The strategy is based on ABCD in the Automatic Statistician, but
+    using precomputed covariance matrices for all models in the search space.
+
+    By default searches a grid of periodic covariance matrices and a linear
+    covariance matrix.
+    '''
+    if kernel_space == None:
+        P_min, P_max = get_l_limits(X)
+        kernel_space = {
+            'PER': np.logspace(np.log10(P_min), np.log10(P_max), 10),
+            'linear': 0
+        }
+
+    
