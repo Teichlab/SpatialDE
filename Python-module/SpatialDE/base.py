@@ -368,4 +368,12 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
             'linear': 0
         }
 
-    
+    de_exp_tab = exp_tab[DE_mll_results['g']]
+
+    logging.info('Performing model search')
+    results = dyn_de(X, de_exp_tab, kernel_space)
+    new_and_old_results = pd.concat((results, DE_mll_results))
+    mask = new_and_old_results.groupby('g')['BIC'].transform(min) == new_and_old_results['BIC']
+    ms_results = new_and_old_results[mask]
+
+    return ms_results
