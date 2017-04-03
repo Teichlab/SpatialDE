@@ -29,6 +29,11 @@ def main():
     sample_info.to_csv('BC_sample_info.csv')
     results.to_csv('BC_final_results.csv')
 
+    de_results = results[(results.qval < 0.05)].copy()
+    ms_results = SpatialDE.model_search(X, res, de_results)
+
+    ms_results.to_csv('BC_MS_results.csv')
+
     return results 
 
 
