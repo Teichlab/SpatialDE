@@ -25,6 +25,11 @@ def main():
     # Save results and annotation in files for interactive plotting and interpretation
     results.to_csv('Frog_final_results.csv')
 
+    de_results = results[(results.qval < 0.05)].copy()
+    ms_results = SpatialDE.model_search(X, res, de_results)
+
+    ms_results.to_csv('Frog_MS_results.csv')
+
     return results 
 
 
