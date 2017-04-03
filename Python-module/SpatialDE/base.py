@@ -376,4 +376,9 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     mask = new_and_old_results.groupby('g')['BIC'].transform(min) == new_and_old_results['BIC']
     ms_results = new_and_old_results[mask]
 
+    # Retain information from significance testing in the new table
+    transfer_columns = ['pval', 'qval', 'max_ll_null']
+    ms_results = ms_results.drop(transfer_columns, 1) \
+        .merge(de_mll_results[transfer_columns + ['g']], on='g')
+
     return ms_results
