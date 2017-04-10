@@ -20,14 +20,23 @@ def make_data(prefix, n_samples, n_genes):
     true_values = pd.DataFrame(index=names, columns=['l', 'mu', 's2_t', 's2_e'])
 
     for g in tqdm(names):
-        l = np.exp(np.random.uniform(low=np.log(0.1), high=np.log(100)))
-        mu = np.random.uniform(low=0., high=5.)
-        s2_t = np.exp(np.random.uniform(low=-5., high=5.))
-        s2_e = np.exp(np.random.uniform(low=-5., high=5.))
+        while True:
+            l = np.exp(np.random.uniform(low=np.log(0.1), high=np.log(100)))
+            mu = np.random.uniform(low=0., high=5.)
+            s2_t = np.exp(np.random.uniform(low=-5., high=5.))
+            s2_e = np.exp(np.random.uniform(low=-5., high=5.))
 
-        K = SpatialDE.base.SE_kernel(X, l)
+            K = SpatialDE.base.SE_kernel(X, l)
 
-        y = np.random.multivariate_normal(mu * np.ones((n_samples,)), (s2_t * K + s2_e * I))
+            mu1 = mu * np.ones((n_samples,))
+            K_total = (s2_t * K + s2_e * I) 
+
+            try:
+                y = np.random.multivariate_normal(mu1, K_total)
+            except np.linalg.linalg.LinAlgError:
+                continue
+            else:
+                break
 
         exp_tab[g] = y
         true_values.loc[g, 'l'] = l
