@@ -37,6 +37,6 @@ rule make_data:
     output:
         '{size}/sim'
     shell:
-        'python simulate_data {output} {wildcards.size} 10000 &&'
-        'touch {output}'
+        'python simulate_data.py {output} {wildcards.size} 10000;'
+        ' and touch {output}'
 
