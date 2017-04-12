@@ -2,6 +2,7 @@ import numpy as np
 
 # form here
 from base_model import SpatialGP
+import ../utils/util as util
 
 # limix objects
 from limix.core.covar import SQExpCov, FreeFormCov
@@ -10,9 +11,10 @@ from limix.core.gp import GP2KronSum
 
 class se_spatial_gp(SpatialGP):
     """docstring for se_spatial_gp."""
-    def __init__(self, X, Y):
+    def __init__(self, X, Y, grid_size = 10):
         super(se_spatial_gp, self).__init__(X, Y)
         self.l = 1.
+        self.l_grid = util.get_l_grid(X, grid_size)
 
         self.build_covar()
         self.build_gp()
@@ -35,13 +37,11 @@ class se_spatial_gp(SpatialGP):
         self.gp = GP2KronSum(self.Y, self.Cg, self.Cn, R=self.fixed_se)
 
     def optimize(self):
-        l_grid = np.array([.1, .01, 1.])  # define values of the grid for l -> do log scale
-
-        best_l = l_grid[0]
+        best_l = self.l_grid[0]
         best_params = self.gp.getParams().copy()
         best_LML = np.Inf
 
-        for l in l_grid:
+        for l in self.l_grid:
             self.l = l
             # NOTE other covariance terms are not changed -> parameters from previous optimisation
             # are kept
