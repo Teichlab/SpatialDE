@@ -34,7 +34,7 @@ def main():
     plt.ylabel('Maximum Log Likelihood')
     plt.title('lengthscale: {}'.format(l))
     plt.savefig('fastgp-fits.png', bbox_inches='tight')
-    
+
     print(results.sort_values('max_delta').head(20))
 
 
