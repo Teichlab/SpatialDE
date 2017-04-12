@@ -26,6 +26,7 @@ def get_l_limits(X):
     
     return l_min, l_max
 
+## Kernels ##
 
 def SE_kernel(X, l):
     Xsq = np.sum(np.square(X), 1)
@@ -47,6 +48,19 @@ def cosine_kernel(X, p):
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 0, np.inf)
     return np.cos(2 * np.pi * np.sqrt(R2) / p)
+
+
+def gower_scaling_factor(K):
+    ''' Gower normalization factor for covariance matric K
+
+    Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
+    '''
+    n = K.shape[0]
+    P = np.eye(n) - np.ones((n, n)) / n
+    KP = K - K.mean(0)[:, np.newaxis]
+    trPKP = np.sum(P * KP)
+
+    return trPKP / (n - 1)
 
 
 def factor(K):
@@ -267,6 +281,7 @@ def dyn_de(X, exp_tab, kernel_space=None):
     if 'linear' in kernel_space:
         K = linear_kernel(X)
         U, S = factor(K)
+        gower = gower_scaling_factor(K)
         UT1 = get_UT1(U)
         US_mats.append({
             'model': 'linear',
@@ -274,13 +289,15 @@ def dyn_de(X, exp_tab, kernel_space=None):
             'l': np.nan,
             'U': U,
             'S': S,
-            'UT1': UT1
+            'UT1': UT1,
+            'Gower': gower
         })
 
     if 'SE' in kernel_space:
         for lengthscale in kernel_space['SE']:
             K = SE_kernel(X, lengthscale)
             U, S = factor(K)
+            gower = gower_scaling_factor(K)
             UT1 = get_UT1(U)
             US_mats.append({
                 'model': 'SE',
@@ -288,13 +305,15 @@ def dyn_de(X, exp_tab, kernel_space=None):
                 'l': lengthscale,
                 'U': U,
                 'S': S,
-                'UT1': UT1
+                'UT1': UT1,
+                'Gower': gower
             })
 
     if 'PER' in kernel_space:
         for period in kernel_space['PER']:
             K = cosine_kernel(X, period)
             U, S = factor(K)
+            gower = gower_scaling_factor(K)
             UT1 = get_UT1(U)
             US_mats.append({
                 'model': 'PER',
@@ -302,7 +321,8 @@ def dyn_de(X, exp_tab, kernel_space=None):
                 'l': period,
                 'U': U,
                 'S': S,
-                'UT1': UT1
+                'UT1': UT1,
+                'Gower': gower
             })
 
     t = time() - t0
@@ -316,6 +336,7 @@ def dyn_de(X, exp_tab, kernel_space=None):
         result['l'] = cov['l']
         result['M'] = cov['M']
         result['model'] = cov['model']
+        result['Gower'] = cov['Gower']
         results.append(result)
 
     results = pd.concat(results).reset_index(drop=True)
@@ -344,6 +365,12 @@ def run(X, exp_tab, kernel_space=None):
     results = dyn_de(X, exp_tab, kernel_space)
     mll_results = get_mll_results(results)
 
+    # Quantify fraction spatial variance
+    scaled_spatial_var = mll_results['max_s2_t_hat'] * mll_results['Gower']
+    noise_var = mll_results['max_s2_t_hat'] * mll_results['max_delta']
+    mll_results['fraction_spatial_variance'] = scaled_spatial_var / (scaled_spatial_var + noise_var)
+
+    # Perform significance test
     mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
     mll_results['qval'] = qvalue(mll_results['pval'])
 
