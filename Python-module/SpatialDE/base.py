@@ -20,10 +20,10 @@ def get_l_limits(X):
     R2 = np.clip(R2, 0, np.inf)
     R_vals = np.unique(R2.flatten())
     R_vals = R_vals[R_vals > 1e-8]
-    
+
     l_min = np.sqrt(R_vals.min()) / 2.
     l_max = np.sqrt(R_vals.max()) * 2.
-    
+
     return l_min, l_max
 
 
@@ -155,7 +155,7 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         t0 = time()
         max_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
         t = time() - t0
-        
+
         results.append({
             'g': exp_tab.columns[g],
             'max_ll': max_ll,
@@ -165,7 +165,7 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
             'time': t,
             'n': n
         })
-        
+
     return pd.DataFrame(results)
 
 
@@ -189,7 +189,7 @@ def null_fits(exp_tab):
             'time': 0,
             'n': n
         })
-    
+
     return pd.DataFrame(results)
 
 
@@ -214,7 +214,7 @@ def const_fits(exp_tab):
             'time': 0,
             'n': n
         })
-    
+
     return pd.DataFrame(results)
 
 
@@ -224,7 +224,7 @@ def simulate_const_model(MLL_params, N):
         params = params[1]
         s2_e = params.max_s2_t_hat * params.max_delta
         dfm[:, i] = np.random.normal(params.max_mu_hat, s2_e, N)
-        
+
     dfm = pd.DataFrame(dfm)
     return dfm
 

@@ -8,11 +8,11 @@ import SpatialDE
 def main():
     df = pd.read_csv('data/rep6/middle_exp_mat.csv', index_col=0)
     df = df.T[df.sum(0) >= 3].T  # Filter practically unobserved genes
-    
+
     # Get coordinates for each sample
     sample_info = pd.read_csv('data/rep6/middle_sample_info.csv', index_col=0)
     df = df.loc[sample_info.index]
-    
+
     X = sample_info[['abs_X', 'abs_Y']]
 
     # Convert data to log-scale, and account for depth
@@ -34,7 +34,7 @@ def main():
 
     ms_results.to_csv('middle_MS_results.csv')
 
-    return results 
+    return results
 
 
 if __name__ == '__main__':
