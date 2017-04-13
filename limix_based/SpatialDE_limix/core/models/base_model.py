@@ -8,6 +8,5 @@ class SpatialGP(object):
         self.Y = Y
 
         self.N = self.Y.shape[0]
-        self.P = self.Y.shape[1]
 
         assert self.X.shape[0] == self.N, 'dimension missmatch'

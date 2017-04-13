@@ -1,4 +1,6 @@
 import numpy as np
+import scipy.special
+import itertools
 
 # form here
 from base_model import SpatialGP
@@ -11,62 +13,73 @@ from limix.core.gp import GP2KronSum
 
 class se_spatial_gp(SpatialGP):
     """docstring for se_spatial_gp."""
-    def __init__(self, X, Y, grid_size=10):
+    def __init__(self, X, Y, P=1):
         super(se_spatial_gp, self).__init__(X, Y)
-        self.l = 1.
-        self.l_grid = util.get_l_grid(X, grid_size)
+        self.P = P  # number of genes to consider jointly
+        self.G = Y.shape[1]
 
-        self.build_covar()
-        self.build_gp()
+        # indices of genes to test jointly and number of tests
+        self.test_ix = [i for i in itertools.combinations(range(self.G),self.P)]
+        self.N_test = int(scipy.special.binom(self.G, self.P))
 
-    def build_covar(self):
-        self.build_se()
-        self.Cg = FreeFormCov(self.P)
-        self.Cn = FreeFormCov(self.P)
+        assert self.N_test == len(self.test_ix), "problem itertools"
+
+        # results
+        self.LML = np.array([np.Inf for i in range(self.N_test)])
+        self.l = np.array([-1. for i in range(self.N_test)])
+        self.parameters = [None for i in range(self.N_test)]
+
+    def build_se(self, l):
+        se = SQExpCov(self.X)
+        se.length = l
+        self.fixed_se = se.K()
+        self.U, self.S = util.factor(self.fixed_se)
+
+        # slower for some reason ...
+        # se = util.SE_kernel(self.X,l)
+        # self.U, self.S = util.factor(se)
+
+
+    def build_limix_gp(self, Y):
+        assert Y.shape[1] == self.P, 'dimension mismatch'
+
+        Cg = FreeFormCov(self.P)
+        Cn = FreeFormCov(self.P)
 
         # TODO implement smart initialisation (splitting empirical covariance)
-        self.Cg.setRandomParams()
-        self.Cn.setRandomParams()
+        Cg.setRandomParams()
+        Cn.setRandomParams()
 
-    def build_se(self):
-        self.se = SQExpCov(self.X)
-        self.se.length = self.l
-        self.fixed_se = self.se.K()
+        return GP2KronSum(Y, Cg, Cn, S_R=self.S, U_R=self.U)
 
-    def build_gp(self):
-        self.gp = GP2KronSum(self.Y, self.Cg, self.Cn, R=self.fixed_se)
+    def optimize_all(self, grid_size=10):
+        l_grid = util.get_l_grid(self.X, grid_size)
 
-    def optimize(self):
-        best_l = self.l_grid[0]
-        best_params = self.gp.getParams().copy()
-        best_LML = np.Inf
+        for l in l_grid:
+            self.build_se(l)
+            # for each gene or gene n-tuple (parallelised ? -> needs list of GPs then)
+            for i in range(self.N_test):
+                self.optimise_single(i, l)
 
-        for l in self.l_grid:
-            self.l = l
-            # NOTE other covariance terms are not changed -> parameters from previous optimisation
-            # are kept
-            self.build_se()
-            self.build_gp()
-            self.gp.optimize()
-
-            # for each gene or gene pair or gene n-tuple (parallelised ? -> needs list of GPs then)
-
-            if self.gp.LML() < best_LML:
-                best_l = l
-                best_params = self.gp.getParams().copy()
-                best_LML = self.gp.LML()
-
-        self.l = best_l
-        self.build_se()
-        self.build_gp()
-        self.gp.setParams(best_params)
+    def optimise_single(self, i, l):
+        Y_i = self.Y[:,self.test_ix[i]]
+        gp = self.build_limix_gp(Y_i)
+        gp.optimize(verbose=False)
+        if gp.LML() < self.LML[i]:
+            self.l[i] = l
+            self.LML[i] = gp.LML()
+            # TODO also store matrices to compute variance explained at the end
+            # TODO also store parameters for interpretations ?
 
 
 if __name__ == '__main__':
-    N = 100
+    N = 50
+    NG = 10
     X = np.reshape(np.random.randn(N*2),[N,2])
-    Y = np.reshape(np.random.randn(N*2),[N,2])
+    Y = np.reshape(np.random.randn(N*NG),[N,NG])
 
-    gp = se_spatial_gp(X, Y)
-    gp.optimize()
-    print(gp.l, gp.gp.getParams())
+    P = 2
+
+    gps = se_spatial_gp(X, Y, P)
+    gps.optimize_all()
+    # print(gps.LML)
