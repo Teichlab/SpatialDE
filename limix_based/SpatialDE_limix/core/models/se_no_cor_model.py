@@ -17,6 +17,7 @@ class se_spatial_no_cor_gp(SpatialGP):
         super(se_spatial_no_cor_gp, self).__init__(X, Y)
         self.P = P  # number of genes to consider jointly
         self.G = Y.shape[1]
+        self.N_params = 2 * DiagonalCov(self.P).getNumberParams()
 
         # indices of genes to test jointly and number of tests
         self.test_ix = [i for i in itertools.combinations(range(self.G),self.P)]

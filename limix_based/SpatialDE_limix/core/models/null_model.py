@@ -17,6 +17,7 @@ class null_gp(SpatialGP):
         super(null_gp, self).__init__(X, Y)
         self.P = P  # number of genes to consider jointly
         self.G = Y.shape[1]
+        self.N_params = FreeFormCov(self.P).getNumberParams()
 
         # indices of genes to test jointly and number of tests
         self.test_ix = [i for i in itertools.combinations(range(self.G),self.P)]
