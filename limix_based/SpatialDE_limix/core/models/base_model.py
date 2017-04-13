@@ -1,7 +1,9 @@
 
 
 class SpatialGP(object):
-    """docstring for SpatialGP."""
+    """
+    Parent class of all spatial gp models
+    """
     # TODO should Y include all genes or just noe at a time
     def __init__(self, X, Y):
         self.X = X

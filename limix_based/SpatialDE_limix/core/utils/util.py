@@ -38,7 +38,6 @@ def SE_kernel(X, l):
 def pval(alt, null):
     LLR = null.LML - alt.LML
     df = alt.N_params - null.N_params
-    import pdb; pdb.set_trace()
     return 1. - stats.chi2.cdf(LLR, df=df)
 
 

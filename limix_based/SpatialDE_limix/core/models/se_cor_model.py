@@ -12,7 +12,21 @@ from limix.core.gp import GP2KronSum
 
 
 class se_spatial_gp(SpatialGP):
-    """docstring for se_spatial_gp."""
+    """
+    input:
+        - X of dimensions [N_sample, 2] -> positions
+        - Y of dim [N_sample, N_gene] -> gene expression
+        - P the number of genes to model jointly
+
+    Model:
+        - Gene P-tuples are modeled with a GP with covariance sum of two Kroneckers,
+        one with Freeform * SE, one with Freeform * identity noise
+
+    The LML is computed for each gene tuples and stored into self.LML
+    The best length scales for each gene tuples are stored in self.l
+    parameters of the model not stored yet
+
+    """
     def __init__(self, X, Y, P=1):
         super(se_spatial_gp, self).__init__(X, Y)
         self.P = P  # number of genes to consider jointly
@@ -22,8 +36,6 @@ class se_spatial_gp(SpatialGP):
         # indices of genes to test jointly and number of tests
         self.test_ix = [i for i in itertools.combinations(range(self.G),self.P)]
         self.N_test = int(scipy.special.binom(self.G, self.P))
-
-        assert self.N_test == len(self.test_ix), "problem itertools"
 
         # results
         self.LML = np.array([np.Inf for i in range(self.N_test)])
@@ -59,7 +71,7 @@ class se_spatial_gp(SpatialGP):
         for l in l_grid:
             self.build_se(l)
             # for each gene or gene n-tuple (parallelised ? -> needs list of GPs then)
-            for i in range(self.N_test):
+            for i in xrange(self.N_test):
                 self.optimise_single(i, l)
 
     def optimise_single(self, i, l):

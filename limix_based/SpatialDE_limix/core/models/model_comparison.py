@@ -11,18 +11,33 @@ def run_model(X, Y, model, P):
         gps.optimize_all()
         return gps
 
-    if model == 'se_no_cor':
+    elif model == 'se_no_cor':
         gps = se_spatial_no_cor_gp(X, Y, P)
         gps.optimize_all()
         return gps
 
-    if model == 'null':
+    elif model == 'null':
         gps = null_gp(X, Y, P)
         gps.optimize_all()
         return gps
 
+    else:
+        raise Exception('model not understood')
+
 
 def run(X, Y, model1='se_cor', model2='null', P=2):
+    """
+    Input:
+        - X of dim [N_samples, 2], numpy array, positions
+        - Y of dim [N_samples, N_genes] expression levels
+        - P number of genes to model jointly
+        - model1 and model2: types of model to compare
+
+    The two different models are trained and their LL is compared to get p values
+    and q values
+
+    Returns vectore of p values and q values for each gene or each gene-tuples
+    """
     m1 = run_model(X, Y, model1, P)
     m2 = run_model(X, Y, model2, P)
 
