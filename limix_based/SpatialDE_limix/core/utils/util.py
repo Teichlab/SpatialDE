@@ -36,6 +36,7 @@ def SE_kernel(X, l):
     # return np.exp(-R2 / (2 * l ** 2))
 
 def pval(alt, null):
+    import pdb; pdb.set_trace()
     LLR = null.LML - alt.LML
     df = alt.N_params - null.N_params
     return 1. - stats.chi2.cdf(LLR, df=df)

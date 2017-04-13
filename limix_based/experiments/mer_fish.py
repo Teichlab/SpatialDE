@@ -9,6 +9,8 @@ def run():
     # preprocessing: same as in SpatialDE
     data_dir = 'merfish_data/'
     res_dir = 'merfish_res/'
+    random_input = True
+    gene_selection = range(3)
 
     df = pd.read_csv(data_dir + '/middle_exp_mat.csv', index_col=0)
     df = df.T[df.sum(0) >= 3].T  # Filter practically unobserved genes
@@ -23,13 +25,17 @@ def run():
     dfm = NaiveDE.stabilize(df.T).T
     res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(cytoplasmArea)').T
 
-    res = res.iloc[:, 0:3]
+    res = res.iloc[:, gene_selection]
     # specific code to limix_based implementation starts
     exp = res.values
     pos = X.values
 
+    if random_input:
+        pos = pos[np.random.choice(range(pos.shape[0]), pos.shape[0], replace=False), :]
+        np.random.shuffle(exp)
+
     model1 = 'se_cor'
-    model2 = 'null'
+    model2 = 'se_no_cor'
 
     # single trait spatialDE analysis
     pval1, qval1 = model_comparison.run(pos, exp, model1, model2, P=1)
