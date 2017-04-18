@@ -19,9 +19,6 @@ def get_coords(index):
 
 
 def run():
-    random_input = False
-    gene_selection = range(1000)
-
     # preprocessing: same as in SpatialDE
     logger.info('Reading data')
     df = pd.read_table('../../Analysis/BreastCancer/data/Layer2_BC_count_matrix-1.tsv', index_col=0)
@@ -35,7 +32,9 @@ def run():
     dfm = NaiveDE.stabilize(df.T).T
     res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_counts)').T
 
-    res = res.iloc[:, gene_selection]
+    sde_genes = pd.read_csv('../../Analysis/BreastCancer/BC_MS_results.csv', index_col=0)['g']
+
+    res = res[sde_genes]
 
     # specific code to limix_based implementation starts
     exp = res.values
