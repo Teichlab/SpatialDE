@@ -3,7 +3,7 @@ import scipy.special
 import itertools
 
 # form here
-from base_model import SpatialGP
+from .base_model import SpatialGP
 import SpatialDE_limix.core.utils.util as util
 
 # limix objects

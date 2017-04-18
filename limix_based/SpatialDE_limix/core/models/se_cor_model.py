@@ -2,8 +2,10 @@ import numpy as np
 import scipy.special
 import itertools
 
+from tqdm import tqdm
+
 # form here
-from base_model import SpatialGP
+from .base_model import SpatialGP
 import SpatialDE_limix.core.utils.util as util
 
 # limix objects
@@ -71,7 +73,7 @@ class se_spatial_gp(SpatialGP):
         for l in l_grid:
             self.build_se(l)
             # for each gene or gene n-tuple (parallelised ? -> needs list of GPs then)
-            for i in xrange(self.N_test):
+            for i in tqdm(range(self.N_test)):
                 self.optimise_single(i, l)
 
     def optimise_single(self, i, l):

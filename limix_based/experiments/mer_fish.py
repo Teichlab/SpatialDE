@@ -1,9 +1,14 @@
+import itertools
+import logging
+
 import pandas as pd
 import NaiveDE
-import itertools
 import numpy as np
 
 from SpatialDE_limix.core.models import model_comparison
+
+logger = logging.getLogger('limix_SpatialDE')
+logger.setLevel('DEBUG')
 
 def run():
     # preprocessing: same as in SpatialDE
@@ -26,6 +31,7 @@ def run():
     res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(cytoplasmArea)').T
 
     res = res.iloc[:, gene_selection]
+
     # specific code to limix_based implementation starts
     exp = res.values
     pos = X.values
@@ -38,8 +44,11 @@ def run():
     model2 = 'se_no_cor'
 
     # single trait spatialDE analysis
+    logger.info('Performing single-trait SpatialDE analysis')
     pval1, qval1 = model_comparison.run(pos, exp, model1, model2, P=1)
+
     # two traits spatialDE analysis
+    logger.info('Performing two-trait SpatialDE analysis')
     pval2, qval2 = model_comparison.run(pos, exp, model1, model2, P=2)
 
     gene_names = res.columns
@@ -49,21 +58,8 @@ def run():
     tmp = ['_'.join(elem) for elem in combinations]
     header2 = ' '.join(tmp)
 
-    with open(res_dir + 'univariate.txt', 'w') as f:
-        np.savetxt(f,
-                   np.concatenate((pval1[None,:], qval1[None,:]), axis=0),
-                   delimiter=' ',
-                   header=header1,
-                   fmt='%s',
-                   comments='')
-
-    with open(res_dir + 'bivariate.txt', 'w') as f:
-        np.savetxt(f,
-                   np.concatenate((pval2[None,:], qval2[None,:]), axis=0),
-                   delimiter=' ',
-                   header=header2,
-                   fmt='%s',
-                   comments='')
+    pd.DataFrame({'pval': pval1, 'qval': qval1}, index=gene_names).to_csv(res_dir + 'univariate.csv')
+    pd.DataFrame({'pval': pval2, 'qval': qval2}, index=tmp).to_csv(res_dir + 'bivariate.csv')
 
 
 if __name__ == '__main__':

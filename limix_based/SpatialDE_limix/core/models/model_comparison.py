@@ -55,5 +55,5 @@ if __name__ == '__main__':
     P = 2
 
     p_vals, q_vals = run(X, Y, P=P)
-    print 'p_vals ', p_vals
-    print 'q_vals ', q_vals
+    print(( 'p_vals ', p_vals))
+    print(( 'q_vals ', q_vals))

@@ -1,10 +1,11 @@
+import itertools
+
 import numpy as np
 import scipy.special
-import itertools
 from tqdm import tqdm
 
 # form here
-from base_model import SpatialGP
+from .base_model import SpatialGP
 import SpatialDE_limix.core.utils.util as util
 
 # limix objects
@@ -68,7 +69,7 @@ class se_spatial_no_cor_gp(SpatialGP):
 
         for l in tqdm(l_grid, leave=False):
             self.build_se(l)
-            for i in tqdm(xrange(self.N_test), leave=False):
+            for i in tqdm(range(self.N_test), leave=False):
                 self.optimise_single(i, l)
 
     def optimise_single(self, i, l):
