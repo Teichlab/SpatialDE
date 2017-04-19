@@ -31,12 +31,13 @@ def get_l_limits(X):
 def SE_kernel(X, l):
     Xsq = np.sum(np.square(X), 1)
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
-    R2 = np.clip(R2, 0, np.inf)
+    R2 = np.clip(R2, 1e-12, np.inf)
     return np.exp(-R2 / (2 * l ** 2))
 
 
 def linear_kernel(X):
-    return np.dot(X, X.T)
+    K = np.dot(X, X.T)
+    return K / K.max()
 
 
 def cosine_kernel(X, p):
@@ -46,7 +47,7 @@ def cosine_kernel(X, p):
     '''
     Xsq = np.sum(np.square(X), 1)
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
-    R2 = np.clip(R2, 0, np.inf)
+    R2 = np.clip(R2, 1e-12, np.inf)
     return np.cos(2 * np.pi * np.sqrt(R2) / p)
 
 
