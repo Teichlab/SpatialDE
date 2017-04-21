@@ -25,6 +25,21 @@ from the command line by
 
     $ pip install spatialde
 
+To see usage example of SpatialDE either keep reading, or look in the
+``Analysis`` directory. Here is brief description of the examples
+provided:
+
+-  ``BreastCancer`` - Transcriptome wide study on breast cancer tissue
+   from Spatial Transcriptomics.
+-  ``Frog`` - A time course of RNA-seq ("1-d space") of *Xenopus*
+   development.
+-  ``MERFISH`` - Expression from single cells in a region of an
+   osteoblast culture using the MERFISH technology with 140 probes.
+-  ``MouseOB`` - Spatial Transcriptomics assay of a slice of Mouse
+   Olfactory Bulb. (Also see below).
+-  ``SeqFISH`` - Expression counts of single cells from mouse
+   hippocampus using the SeqFISH technology with 249 probes.
+
 Below follows a typical usage example in interactive form.
 
 .. code:: ipython3
@@ -44,12 +59,24 @@ Below follows a typical usage example in interactive form.
     Populating the interactive namespace from numpy and matplotlib
 
 
+As an example, let us look at spatially dependent gene expression in
+Mouse Olfactory Bulb using a data set published in Stahl et al 2016.
+With the authors method, hundrads of locations on a tissue slice can be
+sampled at once, and gene expression is measured by sequencing in an
+unbiased while-transcriptome manner.
+
 .. code:: ipython3
 
     counts = pd.read_csv('Analysis/MouseOB/data/Rep11_MOB_0.csv', index_col=0)
     counts = counts.T[counts.sum(0) >= 3].T  # Filter practically unobserved genes
     
+    print(counts.shape)
     counts.iloc[:5, :5]
+
+
+.. parsed-literal::
+
+    (262, 14859)
 
 
 
@@ -174,6 +201,29 @@ Below follows a typical usage example in interactive form.
 
 
 
+We can plot the x and y coordinates in the sample info table to see
+which locations of the tissue slice has been sampled.
+
+.. code:: ipython3
+
+    figsize(6, 4)
+    plt.scatter(sample_info['x'], sample_info['y'], c='k');
+    plt.axis('equal');
+
+
+
+.. image:: README_files/README_6_0.png
+
+
+Our method assumes normally distributed noise, but the data we are using
+is from expression counts, and empirically seems to follow a negative
+binomial distribution. We use technique by Anscombe to approximately
+transform the data to normal distributed noise.
+
+Secondly, library size or sequencing depth of the spatial samples will
+bias the expression of every gene. We use linear regression to account
+for this effect before performing the spatial test.
+
 .. code:: ipython3
 
     norm_expr = NaiveDE.stabilize(counts.T).T
@@ -181,11 +231,12 @@ Below follows a typical usage example in interactive form.
 
 
 For the sake of this example, let's just run the test on 1000 random
-genes
+genes. This should just take a few seconds. With our very fast
+implementation, testing all 14,000 genes takes about 10 minutes.
 
 .. code:: ipython3
 
-    sample_resid_expr = resid_expr.sample(n=1000, axis=1, random_state=24)
+    sample_resid_expr = resid_expr.sample(n=1000, axis=1, random_state=1)
     
     X = sample_info[['x', 'y']]
     results = SpatialDE.run(X, sample_resid_expr)
@@ -195,7 +246,7 @@ genes
 
     INFO:root:Performing DE test
     INFO:root:Pre-calculating USU^T = K's ...
-    INFO:root:Done: 0.076s
+    INFO:root:Done: 0.1s
     INFO:root:Fitting gene models
     INFO:root:Model 1 of 10
     INFO:root:Model 2 of 10                             
@@ -260,11 +311,11 @@ The most important columns are
         </tr>
         <tr>
           <th>g</th>
-          <td>Tinagl1</td>
-          <td>Vstm2l</td>
-          <td>6330415B21Rik</td>
-          <td>Galnt4</td>
-          <td>Leng8</td>
+          <td>2410016O06Rik</td>
+          <td>Angel2</td>
+          <td>Hes6</td>
+          <td>Fam84a</td>
+          <td>Aldh3a2</td>
         </tr>
         <tr>
           <th>l</th>
@@ -276,35 +327,35 @@ The most important columns are
         </tr>
         <tr>
           <th>max_delta</th>
-          <td>0.00628877</td>
-          <td>0.0484324</td>
-          <td>0.837928</td>
-          <td>0.00806104</td>
-          <td>0.975425</td>
+          <td>0.0295523</td>
+          <td>0.03714</td>
+          <td>0.21691</td>
+          <td>0.0352182</td>
+          <td>0.98549</td>
         </tr>
         <tr>
           <th>max_ll</th>
-          <td>11.5958</td>
-          <td>-125.505</td>
-          <td>232.757</td>
-          <td>91.4048</td>
-          <td>-87.1177</td>
+          <td>-52.2817</td>
+          <td>-113.227</td>
+          <td>23.093</td>
+          <td>-122.552</td>
+          <td>-73.012</td>
         </tr>
         <tr>
           <th>max_mu_hat</th>
-          <td>0.025265</td>
-          <td>-4.84373</td>
-          <td>0.877441</td>
-          <td>0.611605</td>
-          <td>-1.56887</td>
+          <td>-0.826809</td>
+          <td>-1.20788</td>
+          <td>0.140246</td>
+          <td>-4.60602</td>
+          <td>-1.72603</td>
         </tr>
         <tr>
           <th>max_s2_t_hat</th>
-          <td>0.0540122</td>
-          <td>19.2345</td>
-          <td>0.386566</td>
-          <td>0.34356</td>
-          <td>1.19909</td>
+          <td>0.650257</td>
+          <td>1.33346</td>
+          <td>0.0544851</td>
+          <td>17.5935</td>
+          <td>1.4265</td>
         </tr>
         <tr>
           <th>model</th>
@@ -324,59 +375,59 @@ The most important columns are
         </tr>
         <tr>
           <th>time</th>
-          <td>0.000803947</td>
-          <td>0.000534058</td>
-          <td>0.000344038</td>
-          <td>0.000543118</td>
-          <td>0.000329018</td>
+          <td>0.00247407</td>
+          <td>0.000535011</td>
+          <td>0.000555038</td>
+          <td>0.000602961</td>
+          <td>0.00033164</td>
         </tr>
         <tr>
           <th>BIC</th>
-          <td>-0.948912</td>
-          <td>273.252</td>
-          <td>-443.272</td>
-          <td>-160.567</td>
-          <td>196.478</td>
+          <td>126.806</td>
+          <td>248.696</td>
+          <td>-23.9433</td>
+          <td>267.346</td>
+          <td>168.267</td>
         </tr>
         <tr>
           <th>max_ll_null</th>
-          <td>10.697</td>
-          <td>-126.502</td>
-          <td>232.255</td>
-          <td>90.0269</td>
-          <td>-87.3105</td>
+          <td>-53.706</td>
+          <td>-114.128</td>
+          <td>22.7789</td>
+          <td>-123.262</td>
+          <td>-73.1737</td>
         </tr>
         <tr>
           <th>LLR</th>
-          <td>0.898786</td>
-          <td>0.997314</td>
-          <td>0.502405</td>
-          <td>1.37795</td>
-          <td>0.192801</td>
+          <td>1.42435</td>
+          <td>0.901583</td>
+          <td>0.314117</td>
+          <td>0.710778</td>
+          <td>0.161672</td>
         </tr>
         <tr>
           <th>fraction_spatial_variance</th>
-          <td>0.993746</td>
-          <td>0.953774</td>
-          <td>0.543916</td>
-          <td>0.991998</td>
-          <td>0.506044</td>
+          <td>0.971276</td>
+          <td>0.964166</td>
+          <td>0.82165</td>
+          <td>0.965957</td>
+          <td>0.503478</td>
         </tr>
         <tr>
           <th>pval</th>
-          <td>0.343107</td>
-          <td>0.317961</td>
-          <td>0.478445</td>
-          <td>0.240451</td>
-          <td>0.660595</td>
+          <td>0.232689</td>
+          <td>0.342358</td>
+          <td>0.575165</td>
+          <td>0.399186</td>
+          <td>0.687622</td>
         </tr>
         <tr>
           <th>qval</th>
-          <td>0.977568</td>
-          <td>0.977568</td>
-          <td>0.977568</td>
-          <td>0.977568</td>
-          <td>0.977568</td>
+          <td>0.980077</td>
+          <td>0.980077</td>
+          <td>0.980077</td>
+          <td>0.980077</td>
+          <td>0.980077</td>
         </tr>
       </tbody>
     </table>
@@ -405,64 +456,64 @@ The most important columns are
       </thead>
       <tbody>
         <tr>
-          <th>720</th>
-          <td>Cck</td>
-          <td>1.135190</td>
-          <td>8.802861e-07</td>
-        </tr>
-        <tr>
-          <th>865</th>
-          <td>Ptn</td>
+          <th>892</th>
+          <td>Kcnh3</td>
           <td>1.907609</td>
-          <td>8.162537e-05</td>
+          <td>0.001512</td>
         </tr>
         <tr>
-          <th>530</th>
-          <td>Prokr2</td>
+          <th>739</th>
+          <td>Pcp4</td>
           <td>1.135190</td>
-          <td>1.916110e-03</td>
+          <td>0.013843</td>
         </tr>
         <tr>
-          <th>505</th>
-          <td>Nr2f2</td>
+          <th>517</th>
+          <td>Igfbp2</td>
           <td>1.135190</td>
-          <td>4.790035e-03</td>
+          <td>0.013843</td>
         </tr>
         <tr>
-          <th>495</th>
-          <td>Frzb</td>
-          <td>1.135190</td>
-          <td>1.317798e-02</td>
+          <th>800</th>
+          <td>Gng13</td>
+          <td>1.907609</td>
+          <td>0.022632</td>
         </tr>
         <tr>
-          <th>180</th>
-          <td>Olfr635</td>
+          <th>262</th>
+          <td>Naaa</td>
           <td>0.675535</td>
-          <td>1.963151e-02</td>
+          <td>0.051705</td>
         </tr>
         <tr>
-          <th>437</th>
+          <th>827</th>
+          <td>Gng4</td>
+          <td>1.907609</td>
+          <td>0.051705</td>
+        </tr>
+        <tr>
+          <th>587</th>
           <td>Map1b</td>
           <td>1.135190</td>
-          <td>4.955250e-02</td>
+          <td>0.051705</td>
         </tr>
         <tr>
-          <th>615</th>
-          <td>Agt</td>
+          <th>459</th>
+          <td>Fmo1</td>
           <td>1.135190</td>
-          <td>6.470005e-02</td>
+          <td>0.096710</td>
         </tr>
         <tr>
-          <th>351</th>
-          <td>Cpne4</td>
+          <th>356</th>
+          <td>Slc38a3</td>
           <td>1.135190</td>
-          <td>7.150909e-02</td>
+          <td>0.096710</td>
         </tr>
         <tr>
-          <th>397</th>
-          <td>Sncb</td>
+          <th>344</th>
+          <td>Hpcal4</td>
           <td>1.135190</td>
-          <td>8.444712e-02</td>
+          <td>0.107360</td>
         </tr>
       </tbody>
     </table>
@@ -472,4 +523,152 @@ The most important columns are
 
 We detected a few spatially differentially expressed genes, *Cck* and
 *Ptn* for example.
+
+A simple way to visualize these genes is by plotting the x and y
+coordinates as above, but letting the color correspond to expression
+level.
+
+.. code:: ipython3
+
+    figsize(10, 3)
+    for i, g in enumerate(['Kcnh3', 'Pcp4', 'Igfbp2']):
+        plt.subplot(1, 3, i + 1)
+        plt.scatter(sample_info['x'], sample_info['y'], c=norm_expr[g]);
+        plt.axis('equal')
+    
+        
+        plt.colorbar(ticks=[]);
+
+
+
+.. image:: README_files/README_16_0.png
+
+
+For reference, we can compare these to genes which are not spatially DE
+
+.. code:: ipython3
+
+    results.sort_values('qval').tail(10)[['g', 'l', 'qval']]
+
+
+
+
+.. raw:: html
+
+    <div>
+    <table border="1" class="dataframe">
+      <thead>
+        <tr style="text-align: right;">
+          <th></th>
+          <th>g</th>
+          <th>l</th>
+          <th>qval</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>338</th>
+          <td>Myo9b</td>
+          <td>1.135190</td>
+          <td>0.980077</td>
+        </tr>
+        <tr>
+          <th>336</th>
+          <td>Sc4mol</td>
+          <td>1.135190</td>
+          <td>0.980077</td>
+        </tr>
+        <tr>
+          <th>335</th>
+          <td>Phf11b</td>
+          <td>1.135190</td>
+          <td>0.980077</td>
+        </tr>
+        <tr>
+          <th>334</th>
+          <td>Cytip</td>
+          <td>1.135190</td>
+          <td>0.980077</td>
+        </tr>
+        <tr>
+          <th>333</th>
+          <td>Bbs12</td>
+          <td>1.135190</td>
+          <td>0.980077</td>
+        </tr>
+        <tr>
+          <th>337</th>
+          <td>Dnase2a</td>
+          <td>1.135190</td>
+          <td>0.980077</td>
+        </tr>
+        <tr>
+          <th>525</th>
+          <td>Foxc1</td>
+          <td>1.135190</td>
+          <td>0.980448</td>
+        </tr>
+        <tr>
+          <th>659</th>
+          <td>BC068281</td>
+          <td>1.135190</td>
+          <td>0.981408</td>
+        </tr>
+        <tr>
+          <th>880</th>
+          <td>Olfr1204</td>
+          <td>1.907609</td>
+          <td>1.000000</td>
+        </tr>
+        <tr>
+          <th>638</th>
+          <td>Rspo1</td>
+          <td>1.135190</td>
+          <td>1.000000</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+
+
+.. code:: ipython3
+
+    figsize(10, 3)
+    for i, g in enumerate(['Myo9b', 'Sc4mol', 'Phf11b']):
+        plt.subplot(1, 3, i + 1)
+        plt.scatter(sample_info['x'], sample_info['y'], c=norm_expr[g]);
+        plt.axis('equal')
+    
+        
+        plt.colorbar(ticks=[]);
+
+
+
+.. image:: README_files/README_19_0.png
+
+
+In regular differential expression analysis, we usually investigate the
+relation between significance and effect size by so called *volcano
+plots*. We don't have the concept of fold change in our case, but we can
+investigate the fraction of variance explained by spatial variation.
+
+.. code:: ipython3
+
+    figsize(5, 4)
+    plt.yscale('log')
+    
+    plt.scatter(results['fraction_spatial_variance'], results['qval'], c='black')
+    
+    plt.axhline(0.05, c='black', lw=1, ls='--');
+    
+    plt.gca().invert_yaxis();
+    plt.xlabel('Fraction spatial variance')
+    plt.ylabel('Adj. P-value');
+
+
+
+.. image:: README_files/README_21_0.png
+
+
 
