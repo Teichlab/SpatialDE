@@ -7,12 +7,24 @@ import SpatialDE
 
 
 @click.command()
-@click.argument('expression_csv', type=click.Path(exists=True))
-@click.argument('coordinate_csv', type=click.Path(exists=True))
-@click.argument('results_csv', type=click.Path())
+@click.argument('expression_csv', type=click.Path(exists=True), metavar='<expression csv>')
+@click.argument('coordinate_csv', type=click.Path(exists=True), metavar='<cooridnates csv>')
+@click.argument('results_csv', type=click.Path(), metavar='<output file>')
 @click.option('--model_selection_csv', type=click.Path(), default=None)
 def main(expression_csv, coordinate_csv, results_csv, model_selection_csv):
     ''' Perform SpatialDE test on data in input files.
+
+    <expression csv> : A CSV file with expression valies. Columns are genes,
+    and Rows are samples
+
+    <coordinates csv> : A CSV file with sample coordinates. Each row is a sample,
+    the columns with coordinates must be named 'x' and 'y'. For other formats
+    (e.g. 1d or 3d queries), it is recommended to write a custom Python
+    script to do the analysis.
+
+    <output file> : P-vaues and other relevant values for each gene
+    will be stored in this file, in CSV format.
+
     '''
     df = pd.read_csv(expression_csv, index_col=0)
 
