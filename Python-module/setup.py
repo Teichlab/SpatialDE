@@ -2,9 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
         name='SpatialDE',
-        version='0.2.0',
+        version='0.3.0',
         description='Spatial and Temporal DE test',
-        url='https://github.com/Teichlab/SpatialGP',
+        url='https://github.com/Teichlab/SpatialDE',
         packages=find_packages(),
         include_package_data=True,
         install_requires=['numpy', 'scipy', 'pandas', 'tqdm',
