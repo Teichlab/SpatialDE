@@ -111,9 +111,13 @@ def LL(delta, UTy, UT1, S, n):
         return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
 
 
+def logdelta_prior_lpdf(log_delta):
+    return -np.log(np.sqrt(10 * np.pi)) - np.square(log_delta - 10.) * 0.1
+
+
 def make_objective(UTy, UT1, S, n):
     def LL_obj(log_delta):
-        return -LL(np.exp(log_delta), UTy, UT1, S, n)
+        return -LL(np.exp(log_delta), UTy, UT1, S, n) - logdelta_prior_lpdf(log_delta)
 
     return LL_obj
 
@@ -168,7 +172,8 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         UTy = get_UTy(U, y)
 
         t0 = time()
-        max_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        max_ll = LL(max_delta, UTy, UT1, S, n)
         t = time() - t0
         
         results.append({
