@@ -112,7 +112,8 @@ def LL(delta, UTy, UT1, S, n):
 
 
 def logdelta_prior_lpdf(log_delta):
-    return -np.log(np.sqrt(10 * np.pi)) - np.square(log_delta - 10.) * 0.1
+    s2p = 4.
+    return -np.log(np.sqrt(2 * np.pi * s2p)) - np.square(log_delta - 10.) / (2 * s2p)
 
 
 def make_objective(UTy, UT1, S, n):
@@ -145,24 +146,27 @@ def lbfgsb_max_LL(UTy, UT1, S, n):
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
 
-def search_max_LL(UTy, UT1, S, n, num=64):
+def search_max_LL(UTy, UT1, S, n, num=32):
     ''' Search for delta which maximizes log likelihood.
     '''
-    max_ll = -np.inf
-    max_delta = np.nan
-    for delta in np.logspace(base=np.e, start=-10, stop=10, num=num):
-        cur_ll = LL(delta, UTy, UT1, S, n)
-        if cur_ll > max_ll:
-            max_ll = cur_ll
-            max_delta = delta
+    min_obj = np.inf
+    max_log_delta = np.nan
+    LL_obj = make_objective(UTy, UT1, S, n)
+    for log_delta in np.linspace(start=-10, stop=10, num=num):
+        cur_obj = LL_obj(log_delta)
+        if cur_obj < min_obj:
+            min_obj = cur_obj
+            max_log_delta = log_delta
 
+    max_delta = np.exp(max_log_delta)
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
     max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
+    max_ll = -min_obj
 
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
 
-def lengthscale_fits(exp_tab, U, UT1, S, num=64):
+def lengthscale_fits(exp_tab, U, UT1, S, num=32):
     ''' Fit GPs after pre-processing for particular lengthscale
     '''
     results = []
@@ -172,7 +176,9 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         UTy = get_UTy(U, y)
 
         t0 = time()
-        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
+        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num=num)
         max_ll = LL(max_delta, UTy, UT1, S, n)
         t = time() - t0
         
