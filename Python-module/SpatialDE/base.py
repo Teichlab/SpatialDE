@@ -6,6 +6,7 @@ import numpy as np
 from scipy import optimize
 from scipy import linalg
 from scipy import stats
+from scipy.misc import derivative
 from tqdm import tqdm
 import pandas as pd
 
@@ -150,7 +151,9 @@ def lbfgsb_max_LL(UTy, UT1, S, n):
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
     max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
 
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
+    d2delta = derivative(LL_obj, np.log(max_delta), n=2)
+
+    return max_ll, max_delta, max_mu_hat, max_s2_t_hat, d2delta
 
 
 def search_max_LL(UTy, UT1, S, n, num=32):
@@ -183,7 +186,7 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         UTy = get_UTy(U, y)
 
         t0 = time()
-        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat, d2delta = lbfgsb_max_LL(UTy, UT1, S, n)
         # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
         # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num=num)
         max_ll = max_reg_ll
@@ -196,7 +199,8 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
             'max_mu_hat': max_mu_hat,
             'max_s2_t_hat': max_s2_t_hat,
             'time': t,
-            'n': n
+            'n': n,
+            'd2delta': d2delta
         })
         
     return pd.DataFrame(results)
