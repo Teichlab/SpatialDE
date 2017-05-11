@@ -151,9 +151,9 @@ def lbfgsb_max_LL(UTy, UT1, S, n):
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
     max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
 
-    d2delta = derivative(LL_obj, np.log(max_delta), n=2)
+    s2_logdelta = 1. / (derivative(LL_obj, np.log(max_delta), n=2) ** 2)
 
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat, d2delta
+    return max_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta
 
 
 def search_max_LL(UTy, UT1, S, n, num=32):
@@ -176,7 +176,17 @@ def search_max_LL(UTy, UT1, S, n, num=32):
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
 
-def lengthscale_fits(exp_tab, U, UT1, S, num=64):
+def make_FSV(UTy, S, n, Gower):
+    def FSV(log_delta):
+        s2_t = s2_t_hat(np.exp(log_delta), UTy, S, n)
+        s2_t_g = s2_t * Gower
+
+        return s2_t_g / (s2_t_g + np.exp(log_delta) * s2_t)
+
+    return FSV
+
+
+def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
     ''' Fit GPs after pre-processing for particular lengthscale
     '''
     results = []
@@ -186,11 +196,13 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         UTy = get_UTy(U, y)
 
         t0 = time()
-        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat, d2delta = lbfgsb_max_LL(UTy, UT1, S, n)
-        # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
-        # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num=num)
+        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta = lbfgsb_max_LL(UTy, UT1, S, n)
         max_ll = max_reg_ll
         t = time() - t0
+
+        # Estimate standard error of Fraction Spatial Variance
+        FSV = make_FSV(UTy, S, n, Gower)
+        s2_FSV = derivative(FSV, np.log(max_delta), n=1) ** 2 * s2_logdelta
         
         results.append({
             'g': exp_tab.columns[g],
@@ -200,7 +212,9 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
             'max_s2_t_hat': max_s2_t_hat,
             'time': t,
             'n': n,
-            'd2delta': d2delta
+            'FSV': FSV(np.log(max_delta)),
+            's2_FSV': s2_FSV,
+            's2_logdelta': s2_logdelta
         })
         
     return pd.DataFrame(results)
@@ -355,11 +369,10 @@ def dyn_de(X, exp_tab, kernel_space=None):
     n_models = len(US_mats)
     for i, cov in enumerate(US_mats):
         logging.info('Model {} of {}'.format(i + 1, n_models))
-        result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'])
+        result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'], cov['Gower'])
         result['l'] = cov['l']
         result['M'] = cov['M']
         result['model'] = cov['model']
-        result['Gower'] = cov['Gower']
         results.append(result)
 
     results = pd.concat(results).reset_index(drop=True)
@@ -387,11 +400,6 @@ def run(X, exp_tab, kernel_space=None):
     logging.info('Performing DE test')
     results = dyn_de(X, exp_tab, kernel_space)
     mll_results = get_mll_results(results)
-
-    # Quantify fraction spatial variance
-    scaled_spatial_var = mll_results['max_s2_t_hat'] * mll_results['Gower']
-    noise_var = mll_results['max_s2_t_hat'] * mll_results['max_delta']
-    mll_results['fraction_spatial_variance'] = scaled_spatial_var / (scaled_spatial_var + noise_var)
 
     # Perform significance test
     mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
