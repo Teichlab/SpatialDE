@@ -118,7 +118,7 @@ def logdelta_prior_lpdf(log_delta):
 
 def make_objective(UTy, UT1, S, n):
     def LL_obj(log_delta):
-        return -LL(np.exp(log_delta), UTy, UT1, S, n) - logdelta_prior_lpdf(log_delta)
+        return -LL(np.exp(log_delta), UTy, UT1, S, n)
 
     return LL_obj
 
@@ -136,17 +136,19 @@ def brent_max_LL(UTy, UT1, S, n):
 
 def lbfgsb_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, 20)],
+    max_boundary = 20.
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, max_boundary)],
                                                  maxfun=64, factr=1e12, epsilon=1e-4)
     max_ll = -f
     max_delta = np.exp(x[0])
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
 
-    boundary_ll = -LL_obj(20.)
+    boundary_ll = -LL_obj(max_boundary)
     if boundary_ll > max_ll:
         max_ll = boundary_ll
-        max_delta = np.exp(20.)
+        max_delta = np.exp(max_boundary)
+
+    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
 
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
@@ -181,9 +183,9 @@ def lengthscale_fits(exp_tab, U, UT1, S, num=64):
         UTy = get_UTy(U, y)
 
         t0 = time()
-        # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
+        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = lbfgsb_max_LL(UTy, UT1, S, n)
         # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = brent_max_LL(UTy, UT1, S, n)
-        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num=num)
+        # max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat = search_max_LL(UTy, UT1, S, n, num=num)
         max_ll = max_reg_ll
         t = time() - t0
         
@@ -235,7 +237,6 @@ def const_fits(exp_tab):
         max_s2_e_hat = y.var()
         sum1 = np.square(y - max_mu_hat).sum()
         max_ll = -0.5 * ( n * np.log(max_s2_e_hat) + sum1 / max_s2_e_hat + n * np.log(2 * np.pi) )
-        max_ll += logdelta_prior_lpdf(20.)
 
         results.append({
             'g': exp_tab.columns[g],
