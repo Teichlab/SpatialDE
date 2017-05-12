@@ -137,8 +137,9 @@ def brent_max_LL(UTy, UT1, S, n):
 
 def lbfgsb_max_LL(UTy, UT1, S, n):
     LL_obj = make_objective(UTy, UT1, S, n)
+    min_boundary = -10
     max_boundary = 20.
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(-10, max_boundary)],
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(min_boundary, max_boundary)],
                                                  maxfun=64, factr=1e12, epsilon=1e-4)
     max_ll = -f
     max_delta = np.exp(x[0])
@@ -147,6 +148,12 @@ def lbfgsb_max_LL(UTy, UT1, S, n):
     if boundary_ll > max_ll:
         max_ll = boundary_ll
         max_delta = np.exp(max_boundary)
+
+    boundary_ll = -LL_obj(min_boundary)
+    if boundary_ll > max_ll:
+        max_ll = boundary_ll
+        max_delta = np.exp(min_boundary)
+
 
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
     max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
