@@ -25,7 +25,7 @@ def main():
     res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_counts)').T
 
     # Add total_count as pseudogene for reference
-    res['log_total_count'] = np.log(sample_info['total_count'])
+    res['log_total_count'] = np.log(sample_info['total_counts'])
 
     results = SpatialDE.run(X, res)
 
