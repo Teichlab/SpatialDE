@@ -17,7 +17,7 @@ def main():
 
     # Convert data to log-scale, and account for depth
     dfm = NaiveDE.stabilize(df.T).T
-    res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(cytoplasmArea)').T
+    res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_count)').T
 
     # Perform Spatial DE test with default settings
     results = SpatialDE.run(X, res)
