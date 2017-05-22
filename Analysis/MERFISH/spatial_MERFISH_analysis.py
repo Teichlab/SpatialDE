@@ -19,6 +19,9 @@ def main():
     dfm = NaiveDE.stabilize(df.T).T
     res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_count)').T
 
+    # Add total_count as pseudogene for reference
+    res['log_total_count'] = np.log(sample_info['total_count'])
+
     # Perform Spatial DE test with default settings
     results = SpatialDE.run(X, res)
 
