@@ -9,7 +9,7 @@ def xpercent_scale():
     plt.gca().set_xticklabels(['{:.0f}%'.format(x*100) for x in plt.gca().get_xticks()])
 
 
-def FSV_sig(results, ms_results=None, certain_only=False):
+def FSV_sig(results, ms_results=None, certain_only=False, covariate_names=['log_total_count']):
     ''' Make a plot of Fraction Spatial Variance vs Q-value
 
     Optionally provide model selection results to the function will color points by model.
@@ -19,6 +19,8 @@ def FSV_sig(results, ms_results=None, certain_only=False):
     plt.yscale('log')
     
     results = results.copy()
+    covariates = results.query('g in @covariate_names')
+    results = results.query('g not in @covariate_names').copy()
     
     results['FSV95conf'] = 2 * np.sqrt(results['s2_FSV'])
     if ms_results is not None:
@@ -62,6 +64,9 @@ def FSV_sig(results, ms_results=None, certain_only=False):
                         marker='o',
                         color=model_colors[model_name],
                         s=size_map[conf_class.left])
+
+    # Plot external covarites for reference
+    plt.scatter(covariates['FSV'], covariates['qval'], marker='x', c='k', s=50, label=None)
     
     
     plt.axhline(0.05, ls='--', c='k', lw=1)
