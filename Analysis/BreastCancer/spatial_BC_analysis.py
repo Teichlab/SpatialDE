@@ -24,6 +24,9 @@ def main():
     dfm = NaiveDE.stabilize(df.T).T
     res = NaiveDE.regress_out(sample_info, dfm.T, 'np.log(total_counts)').T
 
+    # Add total_count as pseudogene for reference
+    res['log_total_count'] = np.log(sample_info['total_count'])
+
     results = SpatialDE.run(X, res)
 
     sample_info.to_csv('BC_sample_info.csv')
