@@ -7,6 +7,7 @@ from scipy import optimize
 from scipy import linalg
 from scipy import stats
 from scipy.misc import derivative
+from scipy.misc import logsumexp
 from tqdm import tqdm
 import pandas as pd
 
@@ -438,8 +439,19 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     logging.info('Performing model search')
     results = dyn_de(X, de_exp_tab, kernel_space)
     new_and_old_results = pd.concat((results, DE_mll_results))
+
+    # Calculate model probabilities
+    mask = new_and_old_results.groupby(['g', 'model'])['BIC'].transform(min) == new_and_old_results['BIC']
+    log_p_data_Hi = -new_and_old_results[mask].pivot_table(values='BIC', index='g', columns='model')
+    log_Z = logsumexp(log_p_data_Hi, 1)
+    log_p_Hi_data = (log_p_data_Hi.T - log_Z).T
+    p_Hi_data = np.exp(log_p_Hi_data).add_suffix('_prob')
+
+    # Select most likely model
     mask = new_and_old_results.groupby('g')['BIC'].transform(min) == new_and_old_results['BIC']
     ms_results = new_and_old_results[mask]
+
+    ms_results = ms_results.join(p_Hi_data, on='g')
 
     # Retain information from significance testing in the new table
     transfer_columns = ['pval', 'qval', 'max_ll_null']
