@@ -5,12 +5,14 @@ import itertools
 from tqdm import tqdm
 
 # form here
-from .base_model import SpatialGP
+from base_model import SpatialGP
 import SpatialDE_limix.core.utils.util as util
 
 # limix objects
 from limix.core.covar import SQExpCov, FreeFormCov
 from limix.core.gp import GP2KronSum
+
+from limix.utils.preprocess import covar_rescaling_factor
 
 
 class se_spatial_gp(SpatialGP):
@@ -46,8 +48,9 @@ class se_spatial_gp(SpatialGP):
 
     def build_se(self, l):
         se = SQExpCov(self.X)
-        se.length = l
+        se.length = l**2.  # to match limix parametrisation
         self.fixed_se = se.K()
+        self.fixed_se *= covar_rescaling_factor(self.fixed_se)
         self.U, self.S = util.factor(self.fixed_se)
 
         # slower for some reason ...
@@ -61,9 +64,15 @@ class se_spatial_gp(SpatialGP):
         Cg = FreeFormCov(self.P)
         Cn = FreeFormCov(self.P)
 
-        # TODO implement smart initialisation (splitting empirical covariance)
-        Cg.setRandomParams()
-        Cn.setRandomParams()
+        # initialise covariance
+        if self.P>1:
+            empirical_cov = Y.transpose().dot(Y)
+            empirical_cov *= 0.5*covar_rescaling_factor(empirical_cov)
+        else:
+            empirical_cov = np.array([[.5]])
+
+        Cg.setCovariance(empirical_cov)
+        Cn.setCovariance(empirical_cov)
 
         return GP2KronSum(Y, Cg, Cn, S_R=self.S, U_R=self.U)
 

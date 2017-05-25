@@ -5,12 +5,14 @@ import scipy.special
 from tqdm import tqdm
 
 # form here
-from .base_model import SpatialGP
+from base_model import SpatialGP
 import SpatialDE_limix.core.utils.util as util
 
 # limix objects
 from limix.core.covar import SQExpCov, DiagonalCov
 from limix.core.gp import GP2KronSum
+
+from limix.utils.preprocess import covar_rescaling_factor
 
 
 class se_spatial_no_cor_gp(SpatialGP):
@@ -47,8 +49,9 @@ class se_spatial_no_cor_gp(SpatialGP):
 
     def build_se(self, l):
         se = SQExpCov(self.X)
-        se.length = l
+        se.length = l**2.  # to match limix parametrisation
         self.fixed_se = se.K()
+        self.fixed_se *= covar_rescaling_factor(self.fixed_se)
         self.U, self.S = util.factor(self.fixed_se)
 
         # slower for some reason ...
@@ -61,6 +64,11 @@ class se_spatial_no_cor_gp(SpatialGP):
 
         Cg = DiagonalCov(self.P)
         Cn = DiagonalCov(self.P)
+
+        # initialise
+        init = .5 * np.eye(self.P)
+        Cg.setCovariance(init)
+        Cn.setCovariance(init)
 
         return GP2KronSum(Y, Cg, Cn, S_R=self.S, U_R=self.U)
 
@@ -89,7 +97,7 @@ if __name__ == '__main__':
     X = np.reshape(np.random.randn(N*2),[N,2])
     Y = np.reshape(np.random.randn(N*NG),[N,NG])
 
-    P = 2
+    P = 1
 
     gps = se_spatial_no_cor_gp(X, Y, P)
     gps.optimize_all()
