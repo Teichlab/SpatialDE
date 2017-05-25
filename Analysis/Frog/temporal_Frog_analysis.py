@@ -19,6 +19,10 @@ def main():
     dfm = NaiveDE.stabilize(df)
     res = NaiveDE.regress_out(sample_info, dfm, 'np.log(ERCC) + np.log(num_genes)', rcond=1e-4).T
 
+    # Add technical factors as pseudogenes for reference
+    res['log_num_genes'] = np.log(sample_info['num_genes'])
+    res['log_ERCC'] = np.log(sample_info['ERCC'])
+
     # Perform Spatial DE test with default settings
     results = SpatialDE.run(X, res)
 
