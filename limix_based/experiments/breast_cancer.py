@@ -41,7 +41,7 @@ def run():
     pos = X.values
 
     model1 = 'se_cor'
-    model2 = 'se_no_cor'
+    model2 = 'null'
 
     # single trait spatialDE analysis
     logger.info('Performing single-trait SpatialDE analysis')
