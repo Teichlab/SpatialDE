@@ -53,7 +53,7 @@ class null_gp(SpatialGP):
         return GP2KronSum(Y, Cg, Cn, R=R)
 
     def optimize_all(self):
-        for i in xrange(self.N_test):
+        for i in range(self.N_test):
             self.optimise_single(i)
 
     def optimise_single(self, i):
