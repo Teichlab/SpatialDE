@@ -21,7 +21,7 @@ def main():
     X = sample_info[['x', 'y']].values
 
     times = pd.DataFrame(columns=['N', 'time'])
-    Ns =  [50, 100, 200, 300, 500, 750, 1000, 2000])
+    Ns =  [50, 100, 200, 300, 500, 750, 1000, 2000]
 
     j = 0
     for N in Ns:
