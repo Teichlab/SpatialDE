@@ -20,28 +20,32 @@ def main():
 
     X = sample_info[['x', 'y']].values
 
-    times = pd.Series(index=[50, 100, 200, 300, 500, 750, 1000, 2000])
+    times = pd.DataFrame(columns=['N', 'time'])
+    Ns =  [50, 100, 200, 300, 500, 750, 1000, 2000])
 
-    for N in times.index:
+    j = 0
+    for N in Ns:
+        for i in range(5):
 
-        Y = res.sample(N, axis=1).values.T
+            Y = res.sample(N, axis=1).values.T
 
-        t0 = time()
+            t0 = time()
 
-        m = GPclust.MOHGP(
-                            X=X,
-                            Y=Y,
-                            kernF=kern.RBF(2) + kern.Bias(2),
-                            kernY=kern.RBF(1) + kern.White(1),
-                            K=5,
-                            prior_Z='DP'
-                        )
+            m = GPclust.MOHGP(
+                                X=X,
+                                Y=Y,
+                                kernF=kern.RBF(2) + kern.Bias(2),
+                                kernY=kern.RBF(1) + kern.White(1),
+                                K=5,
+                                prior_Z='DP'
+                            )
 
-        m.hyperparam_opt_args['messages'] = False
-        m.optimize(step_length=0.1, verbose=False, maxiter=2000)
+            m.hyperparam_opt_args['messages'] = False
+            m.optimize(step_length=0.1, verbose=False, maxiter=2000)
 
-        times[N] = time() - t0
-        print('{}: {} seconds'.format(N, times[N]))
+            times.loc[j] = [N, time() - t0]
+            print(times.loc[j])
+            j += 1
 
     times.to_csv('AEH_times.csv')
 
