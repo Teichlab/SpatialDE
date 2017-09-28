@@ -80,34 +80,44 @@ def get_UTy(U, y):
     return y.dot(U)
 
 
-def mu_hat(delta, UTy, UT1, S, n):
+def mu_hat(delta, UTy, UT1, S, n, Yvar=None):
     ''' ML Estimate of bias mu, function of delta.
     '''
-    UT1_scaled = UT1 / (S + delta)
+    if Yvar is None:
+        Yvar = np.ones_like(S)
+
+    UT1_scaled = UT1 / (S + delta * Yvar)
     sum_1 = UT1_scaled.dot(UTy)
     sum_2 = UT1_scaled.dot(UT1)
 
     return sum_1 / sum_2
 
 
-def s2_t_hat(delta, UTy, S, n):
+def s2_t_hat(delta, UTy, S, n, Yvar=None):
     ''' ML Estimate of structured noise, function of delta
     '''
-    UTy_scaled = UTy / (S + delta)
+    if Yvar is None:
+        Yvar = np.ones_like(S)
+
+    UTy_scaled = UTy / (S + delta * Yvar)
     return UTy_scaled.dot(UTy) / n
 
 
-def LL(delta, UTy, UT1, S, n):
+def LL(delta, UTy, UT1, S, n, Yvar=None):
     ''' Log-likelihood of GP model as a function of delta.
 
     The parameter delta is the ratio s2_e / s2_t, where s2_e is the
     observation noise and s2_t is the noise explained by covariance
     in time or space.
     '''
-    mu_h = mu_hat(delta, UTy, UT1, S, n)
 
-    sum_1 = (np.square(UTy - UT1 * mu_h) / (S + delta)).sum()
-    sum_2 = np.log(S + delta).sum()
+    mu_h = mu_hat(delta, UTy, UT1, S, n, Yvar)
+    
+    if Yvar is None:
+        Yvar = np.ones_like(S)
+
+    sum_1 = (np.square(UTy - UT1 * mu_h) / (S + delta * Yvar)).sum()
+    sum_2 = np.log(S + delta * Yvar).sum()
 
     with np.errstate(divide='ignore'):
         return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
@@ -118,9 +128,9 @@ def logdelta_prior_lpdf(log_delta):
     return -np.log(np.sqrt(2 * np.pi * s2p)) - np.square(log_delta - 20.) / (2 * s2p)
 
 
-def make_objective(UTy, UT1, S, n):
+def make_objective(UTy, UT1, S, n, Yvar=None):
     def LL_obj(log_delta):
-        return -LL(np.exp(log_delta), UTy, UT1, S, n)
+        return -LL(np.exp(log_delta), UTy, UT1, S, n, Yvar)
 
     return LL_obj
 
@@ -136,11 +146,12 @@ def brent_max_LL(UTy, UT1, S, n):
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
 
-def lbfgsb_max_LL(UTy, UT1, S, n):
-    LL_obj = make_objective(UTy, UT1, S, n)
+def lbfgsb_max_LL(UTy, UT1, S, n, Yvar=None):
+    LL_obj = make_objective(UTy, UT1, S, n, Yvar)
     min_boundary = -10
     max_boundary = 20.
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True, bounds=[(min_boundary, max_boundary)],
+    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True,
+                                                 bounds=[(min_boundary, max_boundary)],
                                                  maxfun=64, factr=1e12, epsilon=1e-4)
     max_ll = -f
     max_delta = np.exp(x[0])
@@ -156,8 +167,8 @@ def lbfgsb_max_LL(UTy, UT1, S, n):
         max_delta = np.exp(min_boundary)
 
 
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
+    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n, Yvar)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n, Yvar)
 
     s2_logdelta = 1. / (derivative(LL_obj, np.log(max_delta), n=2) ** 2)
 
