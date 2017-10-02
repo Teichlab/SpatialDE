@@ -6,7 +6,7 @@ import pandas as pd
 from . import base
 
 
-def optimize_gp_params(Ymean, Yvar, Us, UT1s, Ss, Ks):
+def optimize_gp_params(Ymean, Yvar, Us, UT1s, Ss, Ks, N):
     ''' Optimize GP parameters for pattern of (Ymean, Yvar)
         over the covariance structure grid.
     '''
@@ -72,7 +72,7 @@ def aeh(X, Y, C, Ks=None, max_iter=10):
             Yvar = Y[genes].var(0) + 1.
 
             # Learn noise level and lengthscale of pattern
-            ll, delta, s2s, top_k = optimize_gp_params(Ymean, Yvar, Us, UT1s, Ss, Ks)
+            ll, delta, s2s, top_k = optimize_gp_params(Ymean, Yvar, Us, UT1s, Ss, Ks, N)
             K = Ks[top_k]
 
 
@@ -132,11 +132,12 @@ def spatial_patterns(X, exp_mat, DE_mll_results, C, max_iter=10, kernel_space=No
         raise NotImplementedError('Custom kernels not supported for AEH.')
         
     Y = exp_mat[DE_mll_results['g']].values.T
+    N = Y.shape[1]
     
     patterns, cost, Yhats, ll = aeh(X, Y, C, Ks=Ks, max_iter=max_iter)
     
     cres = pd.DataFrame({'g': DE_mll_results['g'],
-                         'pattern': new_clusts,
+                         'pattern': patterns,
                          'membership': cost.min(1) / N})
     
     Yhats = np.hstack(Yhats)
