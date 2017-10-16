@@ -18,3 +18,34 @@ SE_kernel <- function(X, l) {
   K <- exp(-R2 / (2 * l ** 2))
   K
 }
+
+factor <- function(K) {
+  factors <- eigen(K)
+  factors$values[factors$values < 0.] <- 0.
+  list('U' = factors$vectors, 'S' = factors$values)
+}
+
+get_UT1 <- function(U) {
+  colSums(U)
+}
+
+get_UTy <- function(U, y) {
+  t(y) %*% U
+}
+
+mu_hat <- function(delta, UTy, UT1, S) {
+  UT1_scaled <- UTy / (S + delta)
+  sum1 <- UT1_scaled %*% t(UTy)
+  sum2 <- UT1_scaled %*% UT1
+  sum1 / sum2
+}
+
+LL <- function(delta, UTy, UT1, S, n) {
+  mu_h <- mu_hat(delta, UTy, UT1, S)
+
+  sum_1 <- sum((UTy - UT1 * mu_h) / (S + delta))
+  sum_2 <- sum(log(S + delta))
+
+  -0.5 * (n * log(2 * pi) + n * log(sum_1 / n) + sum_2 + n)
+}
+
