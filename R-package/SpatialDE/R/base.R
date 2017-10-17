@@ -49,3 +49,9 @@ LL <- function(delta, UTy, UT1, S, n) {
   -0.5 * (n * log(2 * pi) + n * log(sum_1 / n) + sum_2 + n)
 }
 
+make_objective <- function(UTy, UT1, S, n){
+  ll_obj <- function(log_delta){
+    -LL(exp(log_delta), UTy, UT1, S, n)
+  }
+  ll_obj
+}
