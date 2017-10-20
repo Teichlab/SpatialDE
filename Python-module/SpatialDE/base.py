@@ -2,7 +2,7 @@ import sys
 from time import time
 import logging
 
-import numpy as np
+import autograd.numpy as np
 from scipy import optimize
 from scipy import linalg
 from scipy import stats
@@ -67,9 +67,9 @@ def gower_scaling_factor(K):
 
 
 def factor(K):
-    S, U = linalg.eigh(K)
+    S, U = np.linalg.eigh(K)
     # .clip removes negative eigenvalues
-    return U, S.clip(0.)
+    return U, np.clip(S, 1e-8, None)
 
 
 def get_UT1(U):

@@ -1,8 +1,3 @@
-# Hello, world!
-#
-# This is an example function named 'hello'
-# which prints 'Hello, world!'.
-#
 # You can learn more about package authoring with RStudio at:
 #
 #   http://r-pkgs.had.co.nz/
@@ -54,4 +49,16 @@ make_objective <- function(UTy, UT1, S, n){
     -LL(exp(log_delta), UTy, UT1, S, n)
   }
   ll_obj
+}
+
+lengthscale_fit <- function(UTy, UT1, S, n) {
+  ll_obj <- make_objective(UTy, UT1, S, n)
+  o <- optimize(ll_obj, c(-10, 20))
+  list('max_delta' = exp(o$minimum), 'max_ll' = -o$objective)
+}
+
+lengthscale_fit_helper <- function(y, U, UT1, S) {
+  UTy <- get_UTy(U, y)
+  n <- length(y)
+  lengthscale_fit(UTy, UT1, S, n)
 }
