@@ -111,7 +111,7 @@ def aeh(X, Y, C, Ks=None, max_iter=10):
 
 def spatial_patterns(X, exp_mat, DE_mll_results, C, max_iter=10, kernel_space=None):
     ''' Group spatially variable genes into spatial patterns using automatic
-    expression histology (AEH).
+     histology analysis (AHA).
 
     Returns
     
