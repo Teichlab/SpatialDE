@@ -2,7 +2,7 @@ import sys
 from time import time
 import logging
 
-import autograd.numpy as np
+import numpy as np
 from scipy import optimize
 from scipy import linalg
 from scipy import stats
