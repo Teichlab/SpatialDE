@@ -52,6 +52,7 @@ def ln_P_YZms(Y, Z, mu, s2e, pi=None):
     ''' Expecation of ln P(Y | Z, mu, s2e)
     '''
     G = Y.shape[0]
+    N = Y.shape[1]
     C = Z.shape[1]
     if pi is None:
         pi = np.ones(C) / C
@@ -250,6 +251,11 @@ def spatial_patterns(X, exp_mat, DE_mll_results, C, l, **kwargs):
         given spatial patterns.
     '''
     Y = exp_mat[DE_mll_results['g']].values.T
+
+    # This is important, we only care about co-expression, not absolute levels.
+    Y = (Y.T - Y.mean(1)).T
+    Y = (Y.T / Y.std(1)).T
+
     _, m, r, _ = fit_patterns(X, Y, C, l, **kwargs)
 
     cres = pd.DataFrame({'g': DE_mll_results['g'],
