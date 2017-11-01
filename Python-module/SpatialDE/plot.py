@@ -42,7 +42,7 @@ def FSV_sig(results, ms_results=None, certain_only=False, covariate_names=['log_
         # Plot non-signficant genes
         tmp = result_group.query('qval > 0.05')
         label = 'Genes (Not Significant)' if conf_class.left == 0.0 else None
-        plt.scatter(tmp['FSV'], tmp['qval'],
+        plt.scatter(tmp['FSV'], tmp['pval'],
                     alpha=0.5,
                     rasterized=True,
                     label=label,
@@ -57,7 +57,7 @@ def FSV_sig(results, ms_results=None, certain_only=False, covariate_names=['log_
         label_map = {'SE': 'General', 'PER': 'Periodic', 'linear': 'Linear'}
         for model_name, model_group in tmp.groupby('model_bic'):
             label = 'Genes ({} function)'.format(label_map[model_name]) if conf_class.left == 0.0 else None
-            plt.scatter(model_group['FSV'], model_group['qval'],
+            plt.scatter(model_group['FSV'], model_group['pval'],
                         alpha=0.5,
                         rasterized=True,
                         label=label,
@@ -66,14 +66,14 @@ def FSV_sig(results, ms_results=None, certain_only=False, covariate_names=['log_
                         s=size_map[conf_class.left])
 
     # Plot external covarites for reference
-    plt.scatter(covariates['FSV'], covariates['qval'], marker='x', c='k', s=50, label=None)
+    plt.scatter(covariates['FSV'], covariates['pval'], marker='x', c='k', s=50, label=None)
     
-    
-    plt.axhline(0.05, ls='--', c='k', lw=1)
+    FDR_lim = results.query('qval < 0.05')['pval'].max()
+    plt.axhline(FDR_lim, ls='--', c='k', lw=1, label='FDR = 0.05')
     
     # Label axes
     plt.xlabel('Fraction spatial variance')
-    plt.ylabel('Adj. P-value')
+    plt.ylabel('P-value')
     plt.gca().invert_yaxis()
 
     lgd = plt.legend(scatterpoints=3, loc='upper left', bbox_to_anchor=[1., 1.])
