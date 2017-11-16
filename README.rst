@@ -2,32 +2,36 @@
 SpatialDE
 =========
 
-SpatialDE is a method to identify genes which signfificantly depend on
-spatial coordinates in non-linear and non-parametric ways. The intended
-applications are spatially resolved RNA-sequencing from e.g. Spatial
-Transcriptomics, or *in situ* gene expression measurements from e.g.
-SeqFISH or MERFISH.
+**SpatialDE** is a method to identify genes which significantly depend
+on spatial coordinates in non-linear and non-parametric ways. The
+intended applications are spatially resolved RNA-sequencing from e.g.
+Spatial Transcriptomics, or *in situ* gene expression measurements from
+e.g. SeqFISH or MERFISH.
 
-This repository contains both the implementations of our method, as well
-as case studies in applying it.
+Additionally, SpatialDE provides **automatic expression histology**, a
+method that groups genes into common spatial patterns (and conversely
+reveal histological patterns based on gene coexpression).
+
+This repository contains both the implementations of our methods, as
+well as case studies in applying it.
 
 The key features of our method are
 
 -  Unsupervised - No need to define spatial regions
 -  Non-parametric and non-linear expression patterns
+-  Automatic histology based on spatially coexpressed genes
 -  Extremely fast - Transcriptome wide tests takes only a few minutes on
    normal computers
 
-The primary implementation is as a Python3 package, and can be installed
-from the command line by
+The primary implementation is as a Python 3 package, and can be
+installed from the command line by
 
 ::
 
     $ pip install spatialde
 
 To see usage example of SpatialDE either keep reading, or look in the
-``Analysis`` directory. Here is brief description of the examples
-provided:
+``Analysis`` directory. The following examples are provided:
 
 -  ``BreastCancer`` - Transcriptome wide study on breast cancer tissue
    from Spatial Transcriptomics.
@@ -41,6 +45,9 @@ provided:
    hippocampus using the SeqFISH technology with 249 probes.
 
 Below follows a typical usage example in interactive form.
+
+SpatialDE significance test example use
+---------------------------------------
 
 .. code:: ipython3
 
@@ -60,10 +67,11 @@ Below follows a typical usage example in interactive form.
 
 
 As an example, let us look at spatially dependent gene expression in
-Mouse Olfactory Bulb using a data set published in Stahl et al 2016.
-With the authors method, hundrads of locations on a tissue slice can be
-sampled at once, and gene expression is measured by sequencing in an
-unbiased while-transcriptome manner.
+Mouse Olfactory Bulb using a data set published in `Stahl et al
+2016 <http://dx.doi.org/10.1126/science.aaf2403>`__. With the authors
+method, hundrads of locations on a tissue slice can be sampled at once,
+and gene expression is measured by sequencing in an unbiased
+whole-transcriptome manner.
 
 .. code:: ipython3
 
@@ -84,6 +92,19 @@ unbiased while-transcriptome manner.
 .. raw:: html
 
     <div>
+    <style scoped>
+        .dataframe tbody tr th:only-of-type {
+            vertical-align: middle;
+        }
+    
+        .dataframe tbody tr th {
+            vertical-align: top;
+        }
+    
+        .dataframe thead th {
+            text-align: right;
+        }
+    </style>
     <table border="1" class="dataframe">
       <thead>
         <tr style="text-align: right;">
@@ -155,6 +176,19 @@ unbiased while-transcriptome manner.
 .. raw:: html
 
     <div>
+    <style scoped>
+        .dataframe tbody tr th:only-of-type {
+            vertical-align: middle;
+        }
+    
+        .dataframe tbody tr th {
+            vertical-align: top;
+        }
+    
+        .dataframe thead th {
+            text-align: right;
+        }
+    </style>
     <table border="1" class="dataframe">
       <thead>
         <tr style="text-align: right;">
@@ -212,7 +246,7 @@ which locations of the tissue slice has been sampled.
 
 
 
-.. image:: README_files/README_6_0.png
+.. image:: README_files/README_7_0.png
 
 
 Our method assumes normally distributed noise, but the data we are using
@@ -246,22 +280,22 @@ implementation, testing all 14,000 genes takes about 10 minutes.
 
     INFO:root:Performing DE test
     INFO:root:Pre-calculating USU^T = K's ...
-    INFO:root:Done: 0.1s
+    INFO:root:Done: 0.11s
     INFO:root:Fitting gene models
     INFO:root:Model 1 of 10
-    INFO:root:Model 2 of 10                             
+    INFO:root:Model 2 of 10                            
     INFO:root:Model 3 of 10                            
-    INFO:root:Model 4 of 10                             
+    INFO:root:Model 4 of 10                            
     INFO:root:Model 5 of 10                            
-    INFO:root:Model 6 of 10                             
-    INFO:root:Model 7 of 10                             
+    INFO:root:Model 6 of 10                            
+    INFO:root:Model 7 of 10                            
     INFO:root:Model 8 of 10                            
-    INFO:root:Model 9 of 10                             
-    INFO:root:Model 10 of 10                            
-                                                        
+    INFO:root:Model 9 of 10                            
+    INFO:root:Model 10 of 10                           
+                                                       
 
-The result will be a DataFrame with P-values and other relevant values
-for each gene.
+The result will be a ``DataFrame`` with P-values and other relevant
+values for each gene.
 
 The most important columns are
 
@@ -281,6 +315,19 @@ The most important columns are
 .. raw:: html
 
     <div>
+    <style scoped>
+        .dataframe tbody tr th:only-of-type {
+            vertical-align: middle;
+        }
+    
+        .dataframe tbody tr th {
+            vertical-align: top;
+        }
+    
+        .dataframe thead th {
+            text-align: right;
+        }
+    </style>
     <table border="1" class="dataframe">
       <thead>
         <tr style="text-align: right;">
@@ -294,12 +341,12 @@ The most important columns are
       </thead>
       <tbody>
         <tr>
-          <th>Gower</th>
-          <td>0.999295</td>
-          <td>0.999295</td>
-          <td>0.999295</td>
-          <td>0.999295</td>
-          <td>0.999295</td>
+          <th>FSV</th>
+          <td>0.999955</td>
+          <td>2.0597e-09</td>
+          <td>2.0597e-09</td>
+          <td>2.0597e-09</td>
+          <td>2.0597e-09</td>
         </tr>
         <tr>
           <th>M</th>
@@ -312,10 +359,10 @@ The most important columns are
         <tr>
           <th>g</th>
           <td>2410016O06Rik</td>
-          <td>Angel2</td>
-          <td>Hes6</td>
-          <td>Fam84a</td>
-          <td>Aldh3a2</td>
+          <td>Arpp19</td>
+          <td>Srsf7</td>
+          <td>Wbp7</td>
+          <td>Cpsf3l</td>
         </tr>
         <tr>
           <th>l</th>
@@ -327,35 +374,35 @@ The most important columns are
         </tr>
         <tr>
           <th>max_delta</th>
-          <td>0.0295523</td>
-          <td>0.03714</td>
-          <td>0.21691</td>
-          <td>0.0352182</td>
-          <td>0.98549</td>
+          <td>4.53999e-05</td>
+          <td>4.85165e+08</td>
+          <td>4.85165e+08</td>
+          <td>4.85165e+08</td>
+          <td>4.85165e+08</td>
         </tr>
         <tr>
           <th>max_ll</th>
-          <td>-52.2817</td>
-          <td>-113.227</td>
-          <td>23.093</td>
-          <td>-122.552</td>
-          <td>-73.012</td>
+          <td>-52.2589</td>
+          <td>-107.685</td>
+          <td>-114.477</td>
+          <td>-112.664</td>
+          <td>-49.1672</td>
         </tr>
         <tr>
           <th>max_mu_hat</th>
-          <td>-0.826809</td>
-          <td>-1.20788</td>
-          <td>0.140246</td>
-          <td>-4.60602</td>
-          <td>-1.72603</td>
+          <td>-0.826851</td>
+          <td>-2.21845</td>
+          <td>-6.67811</td>
+          <td>-2.25044</td>
+          <td>0.146089</td>
         </tr>
         <tr>
           <th>max_s2_t_hat</th>
-          <td>0.650257</td>
-          <td>1.33346</td>
-          <td>0.0544851</td>
-          <td>17.5935</td>
-          <td>1.4265</td>
+          <td>0.666985</td>
+          <td>1.04203e-08</td>
+          <td>9.22126e-08</td>
+          <td>1.07257e-08</td>
+          <td>2.20142e-10</td>
         </tr>
         <tr>
           <th>model</th>
@@ -374,60 +421,68 @@ The most important columns are
           <td>260</td>
         </tr>
         <tr>
+          <th>s2_FSV</th>
+          <td>1.94342</td>
+          <td>0.253788</td>
+          <td>47.2945</td>
+          <td>0.363388</td>
+          <td>4.48293</td>
+        </tr>
+        <tr>
+          <th>s2_logdelta</th>
+          <td>6.81931e+08</td>
+          <td>4.3315e+16</td>
+          <td>8.07194e+18</td>
+          <td>6.20209e+16</td>
+          <td>7.65119e+17</td>
+        </tr>
+        <tr>
           <th>time</th>
-          <td>0.00247407</td>
-          <td>0.000535011</td>
-          <td>0.000555038</td>
-          <td>0.000602961</td>
-          <td>0.00033164</td>
+          <td>0.00134182</td>
+          <td>0.00104499</td>
+          <td>0.000994921</td>
+          <td>0.000999928</td>
+          <td>0.00106692</td>
         </tr>
         <tr>
           <th>BIC</th>
-          <td>126.806</td>
-          <td>248.696</td>
-          <td>-23.9433</td>
-          <td>267.346</td>
-          <td>168.267</td>
+          <td>126.761</td>
+          <td>237.613</td>
+          <td>251.196</td>
+          <td>247.571</td>
+          <td>120.577</td>
         </tr>
         <tr>
           <th>max_ll_null</th>
           <td>-53.706</td>
-          <td>-114.128</td>
-          <td>22.7789</td>
-          <td>-123.262</td>
-          <td>-73.1737</td>
+          <td>-107.686</td>
+          <td>-114.478</td>
+          <td>-112.665</td>
+          <td>-49.1681</td>
         </tr>
         <tr>
           <th>LLR</th>
-          <td>1.42435</td>
-          <td>0.901583</td>
-          <td>0.314117</td>
-          <td>0.710778</td>
-          <td>0.161672</td>
-        </tr>
-        <tr>
-          <th>fraction_spatial_variance</th>
-          <td>0.971276</td>
-          <td>0.964166</td>
-          <td>0.82165</td>
-          <td>0.965957</td>
-          <td>0.503478</td>
+          <td>1.44715</td>
+          <td>0.000964007</td>
+          <td>0.000964011</td>
+          <td>0.000964007</td>
+          <td>0.00096401</td>
         </tr>
         <tr>
           <th>pval</th>
-          <td>0.232689</td>
-          <td>0.342358</td>
-          <td>0.575165</td>
-          <td>0.399186</td>
-          <td>0.687622</td>
+          <td>0.228986</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
         </tr>
         <tr>
           <th>qval</th>
-          <td>0.980077</td>
-          <td>0.980077</td>
-          <td>0.980077</td>
-          <td>0.980077</td>
-          <td>0.980077</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
+          <td>0.975231</td>
         </tr>
       </tbody>
     </table>
@@ -445,6 +500,19 @@ The most important columns are
 .. raw:: html
 
     <div>
+    <style scoped>
+        .dataframe tbody tr th:only-of-type {
+            vertical-align: middle;
+        }
+    
+        .dataframe tbody tr th {
+            vertical-align: top;
+        }
+    
+        .dataframe thead th {
+            text-align: right;
+        }
+    </style>
     <table border="1" class="dataframe">
       <thead>
         <tr style="text-align: right;">
@@ -456,19 +524,19 @@ The most important columns are
       </thead>
       <tbody>
         <tr>
-          <th>892</th>
+          <th>890</th>
           <td>Kcnh3</td>
           <td>1.907609</td>
           <td>0.001512</td>
         </tr>
         <tr>
-          <th>739</th>
+          <th>772</th>
           <td>Pcp4</td>
           <td>1.135190</td>
           <td>0.013843</td>
         </tr>
         <tr>
-          <th>517</th>
+          <th>736</th>
           <td>Igfbp2</td>
           <td>1.135190</td>
           <td>0.013843</td>
@@ -480,37 +548,37 @@ The most important columns are
           <td>0.022632</td>
         </tr>
         <tr>
-          <th>262</th>
+          <th>646</th>
           <td>Naaa</td>
           <td>0.675535</td>
           <td>0.051705</td>
         </tr>
         <tr>
-          <th>827</th>
-          <td>Gng4</td>
-          <td>1.907609</td>
-          <td>0.051705</td>
-        </tr>
-        <tr>
-          <th>587</th>
+          <th>749</th>
           <td>Map1b</td>
           <td>1.135190</td>
           <td>0.051705</td>
         </tr>
         <tr>
-          <th>459</th>
+          <th>826</th>
+          <td>Gng4</td>
+          <td>1.907609</td>
+          <td>0.051705</td>
+        </tr>
+        <tr>
+          <th>724</th>
           <td>Fmo1</td>
           <td>1.135190</td>
           <td>0.096710</td>
         </tr>
         <tr>
-          <th>356</th>
+          <th>714</th>
           <td>Slc38a3</td>
           <td>1.135190</td>
           <td>0.096710</td>
         </tr>
         <tr>
-          <th>344</th>
+          <th>712</th>
           <td>Hpcal4</td>
           <td>1.135190</td>
           <td>0.107360</td>
@@ -534,6 +602,7 @@ level.
     for i, g in enumerate(['Kcnh3', 'Pcp4', 'Igfbp2']):
         plt.subplot(1, 3, i + 1)
         plt.scatter(sample_info['x'], sample_info['y'], c=norm_expr[g]);
+        plt.title(g)
         plt.axis('equal')
     
         
@@ -541,7 +610,7 @@ level.
 
 
 
-.. image:: README_files/README_16_0.png
+.. image:: README_files/README_17_0.png
 
 
 For reference, we can compare these to genes which are not spatially DE
@@ -556,6 +625,19 @@ For reference, we can compare these to genes which are not spatially DE
 .. raw:: html
 
     <div>
+    <style scoped>
+        .dataframe tbody tr th:only-of-type {
+            vertical-align: middle;
+        }
+    
+        .dataframe tbody tr th {
+            vertical-align: top;
+        }
+    
+        .dataframe thead th {
+            text-align: right;
+        }
+    </style>
     <table border="1" class="dataframe">
       <thead>
         <tr style="text-align: right;">
@@ -567,64 +649,64 @@ For reference, we can compare these to genes which are not spatially DE
       </thead>
       <tbody>
         <tr>
-          <th>338</th>
-          <td>Myo9b</td>
-          <td>1.135190</td>
-          <td>0.980077</td>
-        </tr>
-        <tr>
-          <th>336</th>
-          <td>Sc4mol</td>
-          <td>1.135190</td>
-          <td>0.980077</td>
+          <th>334</th>
+          <td>Tmem70</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
           <th>335</th>
-          <td>Phf11b</td>
-          <td>1.135190</td>
-          <td>0.980077</td>
+          <td>Rnf20</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
-          <th>334</th>
-          <td>Cytip</td>
-          <td>1.135190</td>
-          <td>0.980077</td>
-        </tr>
-        <tr>
-          <th>333</th>
-          <td>Bbs12</td>
-          <td>1.135190</td>
-          <td>0.980077</td>
+          <th>336</th>
+          <td>Zfp85-rs1</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
           <th>337</th>
-          <td>Dnase2a</td>
-          <td>1.135190</td>
-          <td>0.980077</td>
+          <td>C1qtnf7</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
-          <th>525</th>
-          <td>Foxc1</td>
-          <td>1.135190</td>
-          <td>0.980448</td>
+          <th>338</th>
+          <td>Ap4b1</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
-          <th>659</th>
-          <td>BC068281</td>
-          <td>1.135190</td>
-          <td>0.981408</td>
+          <th>339</th>
+          <td>Psma4</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
-          <th>880</th>
-          <td>Olfr1204</td>
-          <td>1.907609</td>
-          <td>1.000000</td>
+          <th>340</th>
+          <td>Aldh3b1</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
         </tr>
         <tr>
-          <th>638</th>
-          <td>Rspo1</td>
-          <td>1.135190</td>
-          <td>1.000000</td>
+          <th>341</th>
+          <td>Hdx</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
+        </tr>
+        <tr>
+          <th>328</th>
+          <td>Zfp113</td>
+          <td>0.402001</td>
+          <td>0.975231</td>
+        </tr>
+        <tr>
+          <th>999</th>
+          <td>Preb</td>
+          <td>9.052138</td>
+          <td>0.975231</td>
         </tr>
       </tbody>
     </table>
@@ -638,6 +720,7 @@ For reference, we can compare these to genes which are not spatially DE
     for i, g in enumerate(['Myo9b', 'Sc4mol', 'Phf11b']):
         plt.subplot(1, 3, i + 1)
         plt.scatter(sample_info['x'], sample_info['y'], c=norm_expr[g]);
+        plt.title(g)
         plt.axis('equal')
     
         
@@ -645,7 +728,7 @@ For reference, we can compare these to genes which are not spatially DE
 
 
 
-.. image:: README_files/README_19_0.png
+.. image:: README_files/README_20_0.png
 
 
 In regular differential expression analysis, we usually investigate the
@@ -658,7 +741,7 @@ investigate the fraction of variance explained by spatial variation.
     figsize(5, 4)
     plt.yscale('log')
     
-    plt.scatter(results['fraction_spatial_variance'], results['qval'], c='black')
+    plt.scatter(results['FSV'], results['qval'], c='black')
     
     plt.axhline(0.05, c='black', lw=1, ls='--');
     
@@ -668,7 +751,185 @@ investigate the fraction of variance explained by spatial variation.
 
 
 
-.. image:: README_files/README_21_0.png
+.. image:: README_files/README_22_0.png
+
+
+Automatic expression histology
+------------------------------
+
+To perform automatic expression histology (AEH), the genes should be
+filtered by SpatialDE significance. For this example, let us use a very
+weak threshold. But in typical use, filter by ``qval < 0.05``
+
+.. code:: ipython3
+
+    sign_results = results.query('qval < 0.5')
+
+AEH requires two parameters: the number of patterns, and the
+characteristic lengthscale for histological patterns.
+
+For some guidance in picking the lengthscale ``l`` we can look at the
+optimal lengthscale for the signficant genes.
+
+.. code:: ipython3
+
+    sign_results['l'].value_counts()
+
+
+
+
+.. parsed-literal::
+
+    1.135190    11
+    1.907609     4
+    0.675535     4
+    3.205604     1
+    Name: l, dtype: int64
+
+
+
+Here we see that the lengthscale on average is ~1.5, to use some extra
+spatial covariance, we put this paramater to ``l = 1.8``.
+
+For the number of patterns, we try ``C = 3``.
+
+.. code:: ipython3
+
+    histology_results, patterns = SpatialDE.aeh.spatial_patterns(X, resid_expr, sign_results, C=3, l=1.8, verbosity=1)
+
+
+.. parsed-literal::
+
+    iter 0, ELBO: -9.48e+08
+    iter 1, ELBO: -4.20e+08, delta_ELBO: 5.28e+08
+    iter 2, ELBO: -4.20e+08, delta_ELBO: 7.63e+02
+    iter 3, ELBO: -4.20e+08, delta_ELBO: 2.07e+02
+    iter 4, ELBO: -4.20e+08, delta_ELBO: 8.03e+01
+    iter 5, ELBO: -4.20e+08, delta_ELBO: 3.40e+00
+    iter 6, ELBO: -4.20e+08, delta_ELBO: 6.62e-02
+    iter 7, ELBO: -4.20e+08, delta_ELBO: 2.75e-03
+    iter 8, ELBO: -4.20e+08, delta_ELBO: 3.96e-03
+    iter 9, ELBO: -4.20e+08, delta_ELBO: 7.49e-05
+    Converged on iter 9
+
+
+After fitting the AEH model, the function returns two ``DataFrame``\ s,
+one with pattern membership information for each gene:
+
+.. code:: ipython3
+
+    histology_results.head()
+
+
+
+
+.. raw:: html
+
+    <div>
+    <style scoped>
+        .dataframe tbody tr th:only-of-type {
+            vertical-align: middle;
+        }
+    
+        .dataframe tbody tr th {
+            vertical-align: top;
+        }
+    
+        .dataframe thead th {
+            text-align: right;
+        }
+    </style>
+    <table border="1" class="dataframe">
+      <thead>
+        <tr style="text-align: right;">
+          <th></th>
+          <th>g</th>
+          <th>membership</th>
+          <th>pattern</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>564</th>
+          <td>AI593442</td>
+          <td>1.0</td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <th>619</th>
+          <td>Arhgef9</td>
+          <td>1.0</td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <th>632</th>
+          <td>6330403K07Rik</td>
+          <td>1.0</td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <th>646</th>
+          <td>Naaa</td>
+          <td>1.0</td>
+          <td>0</td>
+        </tr>
+        <tr>
+          <th>712</th>
+          <td>Hpcal4</td>
+          <td>1.0</td>
+          <td>2</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+
+
+And one with realizations for the underlying expression for each
+histological pattern.
+
+We can visualize this underlying expression in the tissue context as we
+would for any individual gene.
+
+.. code:: ipython3
+
+    figsize(10, 3)
+    for i in range(3):
+        plt.subplot(1, 3, i + 1)
+        plt.scatter(sample_info['x'], sample_info['y'], c=patterns[i]);
+        plt.axis('equal')
+        plt.title('Pattern {} - {} genes'.format(i, histology_results.query('pattern == @i').shape[0] ))
+        plt.colorbar(ticks=[]);
+
+
+
+.. image:: README_files/README_32_0.png
+
+
+It is usually interesting to see what the coexpressed genes determining
+a histological pattern are:
+
+.. code:: ipython3
+
+    for i in histology_results.sort_values('pattern').pattern.unique():
+        
+        print('Pattern {}'.format(i))
+        print(', '.join(histology_results.query('pattern == @i').sort_values('membership')['g'].tolist()))
+        print()
+
+
+.. parsed-literal::
+
+    Pattern 0
+    Naaa, Aebp1, Mfap3l, Fmo1, 2810002D19Rik, Gng13
+    
+    Pattern 1
+    Map2, Arhgef9, AI593442, 6330403K07Rik, Slc38a3, Igfbp2, Nmb, Map1b
+    
+    Pattern 2
+    Hpcal4, Snap25, Pcp4, Gng4, Ppfia2, Kcnh3
+    
+
 
 
 
