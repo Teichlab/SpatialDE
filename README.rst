@@ -30,6 +30,8 @@ installed from the command line by
 
     $ pip install spatialde
 
+(This should only take a minute or so on a typical system)
+
 To see usage example of SpatialDE either keep reading, or look in the
 ``Analysis`` directory. The following examples are provided:
 
