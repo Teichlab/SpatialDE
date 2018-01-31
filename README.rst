@@ -46,6 +46,14 @@ To see usage example of SpatialDE either keep reading, or look in the
 -  ``SeqFISH`` - Expression counts of single cells from mouse
    hippocampus using the SeqFISH technology with 249 probes.
 
+If you wish to look at the data used or run the notebooks and scripts
+from start to finish, the data needs to be fetched using
+```git lfs`` <https://git-lfs.github.com/>`__, a plugin to ``git`` for
+managing large files. Installation instructions are available on the
+projects `website <https://git-lfs.github.com/>`__. Once ``git lfs`` is
+installed and you have cloned this repository, data can be downloaded by
+running ``git lfs pull`` from inside any repository directory.
+
 Below follows a typical usage example in interactive form.
 
 SpatialDE significance test example use
@@ -264,7 +272,6 @@ for this effect before performing the spatial test.
 
     norm_expr = NaiveDE.stabilize(counts.T).T
     resid_expr = NaiveDE.regress_out(sample_info, norm_expr.T, 'np.log(total_counts)').T
-
 
 For the sake of this example, let's just run the test on 1000 random
 genes. This should just take a few seconds. With our very fast
@@ -612,7 +619,7 @@ level.
 
 
 
-.. image:: README_files/README_17_0.png
+.. image:: README_files/README_16_0.png
 
 
 For reference, we can compare these to genes which are not spatially DE
@@ -730,7 +737,7 @@ For reference, we can compare these to genes which are not spatially DE
 
 
 
-.. image:: README_files/README_20_0.png
+.. image:: README_files/README_19_0.png
 
 
 In regular differential expression analysis, we usually investigate the
@@ -753,7 +760,7 @@ investigate the fraction of variance explained by spatial variation.
 
 
 
-.. image:: README_files/README_22_0.png
+.. image:: README_files/README_21_0.png
 
 
 Automatic expression histology
@@ -905,7 +912,7 @@ would for any individual gene.
 
 
 
-.. image:: README_files/README_32_0.png
+.. image:: README_files/README_31_0.png
 
 
 It is usually interesting to see what the coexpressed genes determining
@@ -931,7 +938,4 @@ a histological pattern are:
     Pattern 2
     Hpcal4, Snap25, Pcp4, Gng4, Ppfia2, Kcnh3
     
-
-
-
 
