@@ -1,3 +1,5 @@
+''' Main underlying functions for SpatialDE functionality.
+'''
 import sys
 from time import time
 import logging
