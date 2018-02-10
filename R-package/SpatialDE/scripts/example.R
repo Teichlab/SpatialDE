@@ -14,6 +14,12 @@ y <- rnorm(N)
 
 UTy <- get_UTy(fac$U, y)
 
+delta <- 0.1
+
+mu_h <- mu_hat(delta, UTy, UT1, fac$S)
+
+UT1 * mu_h
+
 result <- lengthscale_fit(UTy, UT1, fac$S, N)
 
 
