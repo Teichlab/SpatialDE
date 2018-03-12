@@ -18,8 +18,8 @@ def Q_Z_expectation(mu, Y, s2e, N, C, G, pi=None):
               - 0.5 * np.sum((mu.T[None, :, :] - Y[:, None, :]) ** 2, 2) / s2e \
               - 0.5 * N * np.log(2 * np.pi)
 
-    # Subtract max per row for numerical stability
-    rho = np.exp(log_rho - log_rho.max(1)[:, None])
+    # Subtract max per row for numerical stability, and add offset from 0 for same reason.
+    rho = np.exp(log_rho - log_rho.max(1)[:, None]) + 1e-12
     # Then evaluate softmax
     r = (rho.T / (rho.sum(1))).T
     
@@ -134,7 +134,7 @@ def make_elbojective(Y, r, m, X, K_0, s2e_0, pi=None):
 
 # Model fitting
 
-def fit_patterns(X, Y, C, l, s2e_0=1.0, verbosity=0, maxiter=100, printerval=1, opt_interval=1, delta_elbo_threshold=1e-4):
+def fit_patterns(X, Y, C, l, s2e_0=1.0, verbosity=0, maxiter=100, printerval=1, opt_interval=1, delta_elbo_threshold=1e-2):
     ''' Fit spatial patterns using Automatic Expression Histology.
 
     X : Spatial coordinates
