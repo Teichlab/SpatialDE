@@ -1,5 +1,7 @@
 ''' Wrapper functions to use SpatialDE directly on AnnData objects
 '''
+import logging
+
 import pandas as pd
 
 import NaiveDE
@@ -27,7 +29,10 @@ def spatialde_test(adata, coord_columns=['x', 'y'], regress_formula='np.log(tota
 
     results: A table of spatial statistics for each gene.
     '''
+    logging.info('Performing VST for NB counts')
     adata.layers['stabilized'] = NaiveDE.stabilize(adata.X.T).T
+
+    logging.info('Regressing out fixed effects')
     adata.layers['residual'] = NaiveDE.regress_out(adata.obs,
                                                    adata.layers['stabilized'].T,
                                                    regress_formula).T
