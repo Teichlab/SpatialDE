@@ -6,6 +6,7 @@ import pandas as pd
 
 import NaiveDE
 
+from .aeh import spatial_patterns
 from .base import run
 from .util import qvalue
 
@@ -52,3 +53,47 @@ def spatialde_test(adata, coord_columns=['x', 'y'], regress_formula='np.log(tota
     results['qval'] = qvalue(results['pval'], pi0=1.)
 
     return results
+
+
+def automatic_expression_histology(adata, filtered_results, C, l,
+                                    coord_columns=['x', 'y'], layer='residual', **kwargs):
+    ''' Fit the Automatic Expression Histology (AEH) model to
+    expression in an AnnData object.
+
+    Parameters
+    ----------
+
+    adata: An AnnData object with a layer of stabilized expression values
+
+    filtered_results: A DataFrame with the signifificant subset of results
+                      from the SpatialDE significance test.
+
+    C: integer, the number of hidden spatial patterns.
+
+    l: float, the common lengthscale for the hidden spatial patterns.
+
+    layer: A string indicating the layer of adata to fit the AEH model to.
+           By defualt uses the 'residual' layer.
+
+    Returns
+    -------
+
+    (histology_results, patterns)
+
+    histology_results: DataFrame with pattern membership information for each gene.
+
+    patterns: DataFrame with the inferred hidden spatial functions the genes belong to
+              evaluated at all points in the data.
+
+    '''
+    X = adata.obs[coord_columns].values
+
+    expr_mat = pd.DataFrame.from_records(adata.layers[layer],
+                                         columns=adata.var.index,
+                                         index=adata.obs.index)
+
+    logging.info('Performing Automatic Expression Histology')
+    histology_results, patterns = spatial_patterns(X, expr_mat, filtered_results,
+                                                   C, l, **kwargs)
+
+    return histology_results, patterns
