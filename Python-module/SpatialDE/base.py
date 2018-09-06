@@ -396,7 +396,7 @@ def dyn_de(X, exp_tab, kernel_space=None):
         result['model'] = cov['model']
         results.append(result)
 
-    results = pd.concat(results).reset_index(drop=True)
+    results = pd.concat(results, sort=True).reset_index(drop=True)
     results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(results['n'])
 
     return results
@@ -451,7 +451,7 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
 
     logging.info('Performing model search')
     results = dyn_de(X, de_exp_tab, kernel_space)
-    new_and_old_results = pd.concat((results, DE_mll_results))
+    new_and_old_results = pd.concat((results, DE_mll_results), sort=True)
 
     # Calculate model probabilities
     mask = new_and_old_results.groupby(['g', 'model'])['BIC'].transform(min) == new_and_old_results['BIC']
