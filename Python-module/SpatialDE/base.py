@@ -10,7 +10,7 @@ from scipy import linalg
 from scipy import stats
 from scipy.misc import derivative
 from scipy.misc import logsumexp
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 import pandas as pd
 
 from .util import qvalue
