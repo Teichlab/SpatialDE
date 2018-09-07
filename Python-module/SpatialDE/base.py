@@ -1,8 +1,9 @@
 ''' Main underlying functions for SpatialDE functionality.
 '''
 import sys
-from time import time
 import logging
+from time import time
+import warnings
 
 import numpy as np
 from scipy import optimize
@@ -10,7 +11,11 @@ from scipy import linalg
 from scipy import stats
 from scipy.misc import derivative
 from scipy.misc import logsumexp
-from tqdm.autonotebook import tqdm
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    from tqdm.autonotebook import tqdm
+
 import pandas as pd
 
 from .util import qvalue
@@ -388,13 +393,15 @@ def dyn_de(X, exp_tab, kernel_space=None):
 
     logging.info('Fitting gene models')
     n_models = len(US_mats)
-    for i, cov in enumerate(US_mats):
-        logging.info('Model {} of {}'.format(i + 1, n_models))
+    for i, cov in enumerate(tqdm(US_mats, desc='Models: ')):
         result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'], cov['Gower'])
         result['l'] = cov['l']
         result['M'] = cov['M']
         result['model'] = cov['model']
         results.append(result)
+
+    n_genes = exp_tab.shape[1]
+    logging.info('Finished fitting {} models to {} genes'.format(n_models, n_genes))
 
     results = pd.concat(results, sort=True).reset_index(drop=True)
     results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(results['n'])
