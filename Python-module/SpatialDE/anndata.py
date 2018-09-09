@@ -72,8 +72,13 @@ def automatic_expression_histology(adata, filtered_results, C, l,
 
     l: float, the common lengthscale for the hidden spatial patterns.
 
+    coord_columns: A list with the columns of adata.obs which represent spatial
+                   coordinates. Default ['x', 'y'].
+
     layer: A string indicating the layer of adata to fit the AEH model to.
            By defualt uses the 'residual' layer.
+
+    Remaining arguments are passed to SpatialDE.aeh.spatial_patterns()
 
     Returns
     -------
