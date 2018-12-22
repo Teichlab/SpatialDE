@@ -7,7 +7,7 @@ setup(
         url='https://github.com/Teichlab/SpatialDE',
         packages=find_packages(),
         include_package_data=True,
-        install_requires=['numpy', 'scipy', 'pandas', 'tqdm',
+        install_requires=['numpy', 'scipy', 'pandas>=0.23', 'tqdm',
                           'NaiveDE', 'Click'],
         entry_points='''
             [console_scripts]
