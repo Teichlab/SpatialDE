@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
         name='SpatialDE',
-        version='1.1.0',
+        version='1.1.1',
         description='Spatial and Temporal DE test',
         url='https://github.com/Teichlab/SpatialDE',
         packages=find_packages(),
