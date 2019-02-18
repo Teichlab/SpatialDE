@@ -20,8 +20,6 @@ import pandas as pd
 
 from .util import qvalue
 
-logging.basicConfig(level=logging.DEBUG)
-
 
 def get_l_limits(X):
     Xsq = np.sum(np.square(X), 1)
