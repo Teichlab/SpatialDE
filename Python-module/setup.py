@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name='SpatialDE',
-    version='1.1.1',
+    version='1.1.2',
     description='Spatial and Temporal DE test',
     long_description=(HERE.parent / 'README.rst').read_text(),
     url='https://github.com/Teichlab/SpatialDE',
