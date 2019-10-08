@@ -35,31 +35,38 @@ installed from the command line by
 To see usage example of SpatialDE either keep reading, or look in the
 ``Analysis`` directory. The following examples are provided:
 
--  ``BreastCancer`` - Transcriptome wide study on breast cancer tissue
-   from Spatial Transcriptomics.
--  ``Frog`` - A time course of RNA-seq ("1-d space") of *Xenopus*
-   development.
--  ``MERFISH`` - Expression from single cells in a region of an
-   osteoblast culture using the MERFISH technology with 140 probes.
--  ``MouseOB`` - Spatial Transcriptomics assay of a slice of Mouse
-   Olfactory Bulb. (Also see below).
--  ``SeqFISH`` - Expression counts of single cells from mouse
-   hippocampus using the SeqFISH technology with 249 probes.
+``BreastCancer``
+    Transcriptome wide study on breast cancer tissue from
+    Spatial Transcriptomics.
+``Frog``
+    A time course of RNA-seq ("1-d space") of *Xenopus* development.
+``MERFISH``
+    Expression from single cells in a region of an osteoblast culture
+    using the MERFISH technology with 140 probes.
+``MouseOB``
+    Spatial Transcriptomics assay of a slice of Mouse Olfactory Bulb.
+    (Also see below)
+``SeqFISH``
+    Expression counts of single cells from mouse hippocampus using
+    the SeqFISH technology with 249 probes.
 
 If you wish to look at the data used or run the notebooks and scripts
-from start to finish, the data needs to be fetched using
-```git lfs`` <https://git-lfs.github.com/>`__, a plugin to ``git`` for
-managing large files. Installation instructions are available on the
+from start to finish, the data needs to be fetched using |git-lfs|,
+a plugin to ``git`` for managing large files.
+Installation instructions are available on the
 projects `website <https://git-lfs.github.com/>`__. Once ``git lfs`` is
 installed and you have cloned this repository, data can be downloaded by
 running ``git lfs pull`` from inside any repository directory.
+
+.. |git-lfs| replace:: ``git lfs``
+.. _git-lfs: https://git-lfs.github.com/
 
 Below follows a typical usage example in interactive form.
 
 SpatialDE significance test example use
 ---------------------------------------
 
-.. code:: ipython3
+.. code:: python
 
     %pylab inline
     import pandas as pd
@@ -69,7 +76,6 @@ SpatialDE significance test example use
     
     import NaiveDE
     import SpatialDE
-
 
 .. parsed-literal::
 
@@ -83,7 +89,7 @@ method, hundrads of locations on a tissue slice can be sampled at once,
 and gene expression is measured by sequencing in an unbiased
 whole-transcriptome manner.
 
-.. code:: ipython3
+.. code:: python
 
     counts = pd.read_csv('Analysis/MouseOB/data/Rep11_MOB_0.csv', index_col=0)
     counts = counts.T[counts.sum(0) >= 3].T  # Filter practically unobserved genes
@@ -96,92 +102,26 @@ whole-transcriptome manner.
 
     (262, 14859)
 
++---------------+------+-------+-------+---------+------+
+|               | Nrf1 | Zbtb5 | Ccnl1 | Lrrfip1 | Bbs1 |
++===============+======+=======+=======+=========+======+
+| 16.92x9.015   | 1    | 1     | 1     | 2       | 1    |
++---------------+------+-------+-------+---------+------+
+| 16.945x11.075 | 0    | 0     | 3     | 2       | 2    |
++---------------+------+-------+-------+---------+------+
+| 16.97x10.118  | 0    | 1     | 1     | 0       | 0    |
++---------------+------+-------+-------+---------+------+
+| 16.939x12.132 | 1    | 0     | 1     | 0       | 4    |
++---------------+------+-------+-------+---------+------+
+| 16.949x13.055 | 0    | 0     | 0     | 3       | 0    |
++---------------+------+-------+-------+---------+------+
 
-
-
-.. raw:: html
-
-    <div>
-    <style scoped>
-        .dataframe tbody tr th:only-of-type {
-            vertical-align: middle;
-        }
-    
-        .dataframe tbody tr th {
-            vertical-align: top;
-        }
-    
-        .dataframe thead th {
-            text-align: right;
-        }
-    </style>
-    <table border="1" class="dataframe">
-      <thead>
-        <tr style="text-align: right;">
-          <th></th>
-          <th>Nrf1</th>
-          <th>Zbtb5</th>
-          <th>Ccnl1</th>
-          <th>Lrrfip1</th>
-          <th>Bbs1</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th>16.92x9.015</th>
-          <td>1</td>
-          <td>1</td>
-          <td>1</td>
-          <td>2</td>
-          <td>1</td>
-        </tr>
-        <tr>
-          <th>16.945x11.075</th>
-          <td>0</td>
-          <td>0</td>
-          <td>3</td>
-          <td>2</td>
-          <td>2</td>
-        </tr>
-        <tr>
-          <th>16.97x10.118</th>
-          <td>0</td>
-          <td>1</td>
-          <td>1</td>
-          <td>0</td>
-          <td>0</td>
-        </tr>
-        <tr>
-          <th>16.939x12.132</th>
-          <td>1</td>
-          <td>0</td>
-          <td>1</td>
-          <td>0</td>
-          <td>4</td>
-        </tr>
-        <tr>
-          <th>16.949x13.055</th>
-          <td>0</td>
-          <td>0</td>
-          <td>0</td>
-          <td>3</td>
-          <td>0</td>
-        </tr>
-      </tbody>
-    </table>
-    </div>
-
-
-
-.. code:: ipython3
+.. code:: python
 
     sample_info = pd.read_csv('Analysis/MouseOB/MOB_sample_info.csv', index_col=0)
     counts = counts.loc[sample_info.index]  # Align count matrix with metadata table
     
     sample_info.head(5)
-
-
-
 
 .. raw:: html
 
@@ -243,21 +183,16 @@ whole-transcriptome manner.
     </table>
     </div>
 
-
-
 We can plot the x and y coordinates in the sample info table to see
 which locations of the tissue slice has been sampled.
 
-.. code:: ipython3
+.. code:: python
 
     figsize(6, 4)
     plt.scatter(sample_info['x'], sample_info['y'], c='k');
     plt.axis('equal');
 
-
-
 .. image:: README_files/README_7_0.png
-
 
 Our method assumes normally distributed noise, but the data we are using
 is from expression counts, and empirically seems to follow a negative
@@ -268,7 +203,7 @@ Secondly, library size or sequencing depth of the spatial samples will
 bias the expression of every gene. We use linear regression to account
 for this effect before performing the spatial test.
 
-.. code:: ipython3
+.. code:: python
 
     norm_expr = NaiveDE.stabilize(counts.T).T
     resid_expr = NaiveDE.regress_out(sample_info, norm_expr.T, 'np.log(total_counts)').T
@@ -277,13 +212,12 @@ For the sake of this example, let's just run the test on 1000 random
 genes. This should just take a few seconds. With our very fast
 implementation, testing all 14,000 genes takes about 10 minutes.
 
-.. code:: ipython3
+.. code:: python
 
     sample_resid_expr = resid_expr.sample(n=1000, axis=1, random_state=1)
     
     X = sample_info[['x', 'y']]
     results = SpatialDE.run(X, sample_resid_expr)
-
 
 .. parsed-literal::
 
@@ -314,12 +248,9 @@ The most important columns are
 -  ``l`` - A parameter indicating the distance scale a gene changes
    expression over
 
-.. code:: ipython3
+.. code:: python
 
     results.head().T
-
-
-
 
 .. raw:: html
 
@@ -497,14 +428,9 @@ The most important columns are
     </table>
     </div>
 
-
-
-.. code:: ipython3
+.. code:: python
 
     results.sort_values('qval').head(10)[['g', 'l', 'qval']]
-
-
-
 
 .. raw:: html
 
@@ -596,8 +522,6 @@ The most important columns are
     </table>
     </div>
 
-
-
 We detected a few spatially differentially expressed genes, *Cck* and
 *Ptn* for example.
 
@@ -605,7 +529,7 @@ A simple way to visualize these genes is by plotting the x and y
 coordinates as above, but letting the color correspond to expression
 level.
 
-.. code:: ipython3
+.. code:: python
 
     figsize(10, 3)
     for i, g in enumerate(['Kcnh3', 'Pcp4', 'Igfbp2']):
@@ -617,19 +541,13 @@ level.
         
         plt.colorbar(ticks=[]);
 
-
-
 .. image:: README_files/README_16_0.png
-
 
 For reference, we can compare these to genes which are not spatially DE
 
-.. code:: ipython3
+.. code:: python
 
     results.sort_values('qval').tail(10)[['g', 'l', 'qval']]
-
-
-
 
 .. raw:: html
 
@@ -721,9 +639,7 @@ For reference, we can compare these to genes which are not spatially DE
     </table>
     </div>
 
-
-
-.. code:: ipython3
+.. code:: python
 
     figsize(10, 3)
     for i, g in enumerate(['Myo9b', 'Sc4mol', 'Phf11b']):
@@ -735,17 +651,14 @@ For reference, we can compare these to genes which are not spatially DE
         
         plt.colorbar(ticks=[]);
 
-
-
 .. image:: README_files/README_19_0.png
-
 
 In regular differential expression analysis, we usually investigate the
 relation between significance and effect size by so called *volcano
 plots*. We don't have the concept of fold change in our case, but we can
 investigate the fraction of variance explained by spatial variation.
 
-.. code:: ipython3
+.. code:: python
 
     figsize(5, 4)
     plt.yscale('log')
@@ -758,8 +671,6 @@ investigate the fraction of variance explained by spatial variation.
     plt.xlabel('Fraction spatial variance')
     plt.ylabel('Adj. P-value');
 
-
-
 .. image:: README_files/README_21_0.png
 
 
@@ -770,7 +681,7 @@ To perform automatic expression histology (AEH), the genes should be
 filtered by SpatialDE significance. For this example, let us use a very
 weak threshold. But in typical use, filter by ``qval < 0.05``
 
-.. code:: ipython3
+.. code:: python
 
     sign_results = results.query('qval < 0.5')
 
@@ -780,12 +691,9 @@ characteristic lengthscale for histological patterns.
 For some guidance in picking the lengthscale ``l`` we can look at the
 optimal lengthscale for the signficant genes.
 
-.. code:: ipython3
+.. code:: python
 
     sign_results['l'].value_counts()
-
-
-
 
 .. parsed-literal::
 
@@ -802,10 +710,9 @@ spatial covariance, we put this paramater to ``l = 1.8``.
 
 For the number of patterns, we try ``C = 3``.
 
-.. code:: ipython3
+.. code:: python
 
     histology_results, patterns = SpatialDE.aeh.spatial_patterns(X, resid_expr, sign_results, C=3, l=1.8, verbosity=1)
-
 
 .. parsed-literal::
 
@@ -825,12 +732,9 @@ For the number of patterns, we try ``C = 3``.
 After fitting the AEH model, the function returns two ``DataFrame``\ s,
 one with pattern membership information for each gene:
 
-.. code:: ipython3
+.. code:: python
 
     histology_results.head()
-
-
-
 
 .. raw:: html
 
@@ -892,15 +796,13 @@ one with pattern membership information for each gene:
     </table>
     </div>
 
-
-
 And one with realizations for the underlying expression for each
 histological pattern.
 
 We can visualize this underlying expression in the tissue context as we
 would for any individual gene.
 
-.. code:: ipython3
+.. code:: python
 
     figsize(10, 3)
     for i in range(3):
@@ -910,22 +812,17 @@ would for any individual gene.
         plt.title('Pattern {} - {} genes'.format(i, histology_results.query('pattern == @i').shape[0] ))
         plt.colorbar(ticks=[]);
 
-
-
 .. image:: README_files/README_31_0.png
-
 
 It is usually interesting to see what the coexpressed genes determining
 a histological pattern are:
 
-.. code:: ipython3
+.. code:: python
 
     for i in histology_results.sort_values('pattern').pattern.unique():
-        
         print('Pattern {}'.format(i))
         print(', '.join(histology_results.query('pattern == @i').sort_values('membership')['g'].tolist()))
         print()
-
 
 .. parsed-literal::
 
@@ -937,5 +834,3 @@ a histological pattern are:
     
     Pattern 2
     Hpcal4, Snap25, Pcp4, Gng4, Ppfia2, Kcnh3
-    
-
