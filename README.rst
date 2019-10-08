@@ -51,7 +51,7 @@ To see usage example of SpatialDE either keep reading, or look in the
     the SeqFISH technology with 249 probes.
 
 If you wish to look at the data used or run the notebooks and scripts
-from start to finish, the data needs to be fetched using |git-lfs|,
+from start to finish, the data needs to be fetched using |git-lfs|_,
 a plugin to ``git`` for managing large files.
 Installation instructions are available on the
 projects `website <https://git-lfs.github.com/>`__. Once ``git lfs`` is
