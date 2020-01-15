@@ -98,14 +98,15 @@ def mu_hat(delta, UTy, UT1, S, n, Yvar=None):
     return sum_1 / sum_2
 
 
-def s2_t_hat(delta, UTy, S, n, Yvar=None):
+def s2_t_hat(delta, UTy, UT1, S, n, mu_hat, Yvar=None):
     ''' ML Estimate of structured noise, function of delta
     '''
     if Yvar is None:
         Yvar = np.ones_like(S)
 
-    UTy_scaled = UTy / (S + delta * Yvar)
-    return UTy_scaled.dot(UTy) / n
+    numerator = UTy - UT1 * mu_hat
+    numerator_scaled = numerator / (S + delta * Yvar)
+    return numerator_scaled.dot(numerator) / n
 
 
 def LL(delta, UTy, UT1, S, n, Yvar=None):
@@ -146,7 +147,7 @@ def brent_max_LL(UTy, UT1, S, n):
     max_ll = -o.fun
     max_delta = np.exp(o.x)
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat)
 
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
@@ -173,7 +174,7 @@ def lbfgsb_max_LL(UTy, UT1, S, n, Yvar=None):
 
 
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n, Yvar)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n, Yvar)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat, Yvar)
 
     s2_logdelta = 1. / (derivative(LL_obj, np.log(max_delta), n=2) ** 2)
 
@@ -194,15 +195,16 @@ def search_max_LL(UTy, UT1, S, n, num=32):
 
     max_delta = np.exp(max_log_delta)
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n)
+    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat)
     max_ll = -min_obj
 
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat
 
 
-def make_FSV(UTy, S, n, Gower):
+def make_FSV(UTy, UT1, S, n, Gower):
     def FSV(log_delta):
-        s2_t = s2_t_hat(np.exp(log_delta), UTy, S, n)
+        mu = mu_hat(np.exp(log_delta), UTy, UT1, S, n)
+        s2_t = s2_t_hat(np.exp(log_delta), UTy, UT1, S, n, mu)
         s2_t_g = s2_t * Gower
 
         return s2_t_g / (s2_t_g + np.exp(log_delta) * s2_t)
@@ -225,7 +227,7 @@ def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
         t = time() - t0
 
         # Estimate standard error of Fraction Spatial Variance
-        FSV = make_FSV(UTy, S, n, Gower)
+        FSV = make_FSV(UTy, UT1, S, n, Gower)
         s2_FSV = derivative(FSV, np.log(max_delta), n=1) ** 2 * s2_logdelta
         
         results.append({
