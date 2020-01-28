@@ -1,6 +1,39 @@
 import scipy as sp
 from scipy import interpolate
+import pandas as pd
 
+from enum import Enum, auto
+from typing import Optional
+
+import logging
+
+class Kernel(Enum):
+    null = auto()
+    const = auto()
+    linear = auto()
+    SE = auto()
+    PER = auto()
+
+class GP(Enum):
+    GPR = auto()
+    SPGPR  = auto()
+
+class SGPIPM(Enum):
+    free = auto()
+    random = auto()
+    grid = auto()
+
+class GPControl:
+    def __init__(self, gp: GP = GP.GPR, inducing_point_method: SGPIPM = SGPIPM.grid, ninducers: Optional[int] = None):
+        self.gp = gp
+        self.ipm = inducing_point_method
+        self.ninducers = ninducers
+
+def get_dtype(df: pd.DataFrame, msg="Data frame"):
+    dtys = df.dtypes.unique()
+    if dtys.size > 1:
+        logging.warning("%s has more than one dtype, selecting the first one" % msg)
+    return dtys[0]
 
 def qvalue(pv, pi0=None):
     '''

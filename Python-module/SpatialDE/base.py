@@ -6,6 +6,8 @@ from time import time
 import warnings
 
 import numpy as np
+import tensorflow as tf
+import gpflow
 from scipy import optimize
 from scipy import linalg
 from scipy import stats
@@ -18,8 +20,8 @@ with warnings.catch_warnings():
 
 import pandas as pd
 
-from .util import qvalue
-
+from .util import qvalue, Kernel, GP, SGPIPM, GPControl
+from .gpflow_helpers import *
 
 def get_l_limits(X):
     Xsq = np.sum(np.square(X), 1)
@@ -56,20 +58,6 @@ def cosine_kernel(X, p):
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 1e-12, np.inf)
     return np.cos(2 * np.pi * np.sqrt(R2) / p)
-
-
-def gower_scaling_factor(K):
-    ''' Gower normalization factor for covariance matric K
-
-    Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
-    '''
-    n = K.shape[0]
-    P = np.eye(n) - np.ones((n, n)) / n
-    KP = K - K.mean(0)[:, np.newaxis]
-    trPKP = np.sum(P * KP)
-
-    return trPKP / (n - 1)
-
 
 def factor(K):
     S, U = np.linalg.eigh(K)
@@ -128,29 +116,11 @@ def LL(delta, UTy, UT1, S, n, Yvar=None):
     with np.errstate(divide='ignore'):
         return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
 
-
-def logdelta_prior_lpdf(log_delta):
-    s2p = 100.
-    return -np.log(np.sqrt(2 * np.pi * s2p)) - np.square(log_delta - 20.) / (2 * s2p)
-
-
 def make_objective(UTy, UT1, S, n, Yvar=None):
     def LL_obj(log_delta):
         return -LL(np.exp(log_delta), UTy, UT1, S, n, Yvar)
 
     return LL_obj
-
-
-def brent_max_LL(UTy, UT1, S, n):
-    LL_obj = make_objective(UTy, UT1, S, n)
-    o = optimize.minimize_scalar(LL_obj, bounds=[-10, 10], method='bounded', options={'maxiter': 32})
-    max_ll = -o.fun
-    max_delta = np.exp(o.x)
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat)
-
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
-
 
 def lbfgsb_max_LL(UTy, UT1, S, n, Yvar=None):
     LL_obj = make_objective(UTy, UT1, S, n, Yvar)
@@ -180,72 +150,6 @@ def lbfgsb_max_LL(UTy, UT1, S, n, Yvar=None):
 
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta
 
-
-def search_max_LL(UTy, UT1, S, n, num=32):
-    ''' Search for delta which maximizes log likelihood.
-    '''
-    min_obj = np.inf
-    max_log_delta = np.nan
-    LL_obj = make_objective(UTy, UT1, S, n)
-    for log_delta in np.linspace(start=-10, stop=20, num=num):
-        cur_obj = LL_obj(log_delta)
-        if cur_obj < min_obj:
-            min_obj = cur_obj
-            max_log_delta = log_delta
-
-    max_delta = np.exp(max_log_delta)
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat)
-    max_ll = -min_obj
-
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
-
-
-def make_FSV(UTy, UT1, S, n, Gower):
-    def FSV(log_delta):
-        mu = mu_hat(np.exp(log_delta), UTy, UT1, S, n)
-        s2_t = s2_t_hat(np.exp(log_delta), UTy, UT1, S, n, mu)
-        s2_t_g = s2_t * Gower
-
-        return s2_t_g / (s2_t_g + np.exp(log_delta) * s2_t)
-
-    return FSV
-
-
-def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
-    ''' Fit GPs after pre-processing for particular lengthscale
-    '''
-    results = []
-    n, G = exp_tab.shape
-    for g in tqdm(range(G), leave=False):
-        y = exp_tab.iloc[:, g]
-        UTy = get_UTy(U, y)
-
-        t0 = time()
-        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta = lbfgsb_max_LL(UTy, UT1, S, n)
-        max_ll = max_reg_ll
-        t = time() - t0
-
-        # Estimate standard error of Fraction Spatial Variance
-        FSV = make_FSV(UTy, UT1, S, n, Gower)
-        s2_FSV = derivative(FSV, np.log(max_delta), n=1) ** 2 * s2_logdelta
-        
-        results.append({
-            'g': exp_tab.columns[g],
-            'max_ll': max_ll,
-            'max_delta': max_delta,
-            'max_mu_hat': max_mu_hat,
-            'max_s2_t_hat': max_s2_t_hat,
-            'time': t,
-            'n': n,
-            'FSV': FSV(np.log(max_delta)),
-            's2_FSV': s2_FSV,
-            's2_logdelta': s2_logdelta
-        })
-        
-    return pd.DataFrame(results)
-
-
 def null_fits(exp_tab):
     ''' Get maximum LL for null model
     '''
@@ -260,15 +164,13 @@ def null_fits(exp_tab):
         results.append({
             'g': exp_tab.columns[g],
             'max_ll': max_ll,
-            'max_delta': np.inf,
             'max_mu_hat': max_mu_hat,
-            'max_s2_t_hat': 0.,
+            'max_s2_s_hat': 0.,
             'time': 0,
             'n': n
         })
     
     return pd.DataFrame(results)
-
 
 def const_fits(exp_tab):
     ''' Get maximum LL for const model
@@ -285,9 +187,8 @@ def const_fits(exp_tab):
         results.append({
             'g': exp_tab.columns[g],
             'max_ll': max_ll,
-            'max_delta': np.inf,
             'max_mu_hat': max_mu_hat,
-            'max_s2_t_hat': 0.,
+            'max_s2_s_hat': 0.,
             'time': 0,
             'n': n
         })
@@ -316,95 +217,45 @@ def get_mll_results(results, null_model='const'):
     return mll_results
 
 
-def dyn_de(X, exp_tab, kernel_space=None):
+def dyn_de(X, exp_tab, kernel_space=None, control=GPControl(), rng=np.random.default_rng()):
     if kernel_space == None:
-        kernel_space = {
-            'SE': [5., 25., 50.]
-        }
+        kernel_space = [Kernel.SE]
 
     results = []
-
-    if 'null' in kernel_space:
-        result = null_fits(exp_tab)
-        result['l'] = np.nan
-        result['M'] = 1
-        result['model'] = 'null'
-        results.append(result)
-
-    if 'const' in kernel_space:
-        result = const_fits(exp_tab)
-        result['l'] = np.nan
-        result['M'] = 2
-        result['model'] = 'const'
-        results.append(result)
-
-    logging.info('Pre-calculating USU^T = K\'s ...')
-    US_mats = []
-    t0 = time()
-    if 'linear' in kernel_space:
-        K = linear_kernel(X)
-        U, S = factor(K)
-        gower = gower_scaling_factor(K)
-        UT1 = get_UT1(U)
-        US_mats.append({
-            'model': 'linear',
-            'M': 3,
-            'l': np.nan,
-            'U': U,
-            'S': S,
-            'UT1': UT1,
-            'Gower': gower
-        })
-
-    if 'SE' in kernel_space:
-        for lengthscale in kernel_space['SE']:
-            K = SE_kernel(X, lengthscale)
-            U, S = factor(K)
-            gower = gower_scaling_factor(K)
-            UT1 = get_UT1(U)
-            US_mats.append({
-                'model': 'SE',
-                'M': 4,
-                'l': lengthscale,
-                'U': U,
-                'S': S,
-                'UT1': UT1,
-                'Gower': gower
-            })
-
-    if 'PER' in kernel_space:
-        for period in kernel_space['PER']:
-            K = cosine_kernel(X, period)
-            U, S = factor(K)
-            gower = gower_scaling_factor(K)
-            UT1 = get_UT1(U)
-            US_mats.append({
-                'model': 'PER',
-                'M': 4,
-                'l': period,
-                'U': U,
-                'S': S,
-                'UT1': UT1,
-                'Gower': gower
-            })
-
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
-
     logging.info('Fitting gene models')
-    n_models = len(US_mats)
-    for i, cov in enumerate(tqdm(US_mats, desc='Models: ')):
-        result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'], cov['Gower'])
-        result['l'] = cov['l']
-        result['M'] = cov['M']
-        result['model'] = cov['model']
+    for k in tqdm(kernel_space):
+        if k is Kernel.null:
+            result = null_fits(exp_tab)
+            result['l'] = np.nan
+            result['M'] = 1
+            result['model'] = 'null'
+            result['marginal_ll'] = result['max_ll'] - 0.5 * result['M'] * np.log(result['n'])
+        elif k is Kernel.const:
+            result = const_fits(exp_tab)
+            result['l'] = np.nan
+            result['M'] = 2
+            result['model'] = 'const'
+            result['marginal_ll'] = result['max_ll'] - 0.5 * result['M'] * np.log(result['n'])
+        else:
+            if k is Kernel.linear:
+                kern = gpflow.kernels.Linear()
+            elif k is Kernel.SE:
+                kern = gpflow.kernels.SquaredExponential()
+            elif k is Kernel.PER:
+                kern = gpflow.kernels.Cosine()
+
+            if control.gp == GP.GPR:
+                model = GPRModel(X, exp_tab, kern)
+            elif control.gp == GP.SPGPR:
+                model = SGPRModel(X, exp_tab, kern, rng=rng, ipm=control.ipm, ninducers=control.ninducers)
+            result = model.optimize()
+            result.loc[:, 'model'] = k.name
         results.append(result)
 
     n_genes = exp_tab.shape[1]
-    logging.info('Finished fitting {} models to {} genes'.format(n_models, n_genes))
+    logging.info('Finished fitting {} models to {} genes'.format(len(kernel_space), n_genes))
 
     results = pd.concat(results, sort=True).reset_index(drop=True)
-    results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(results['n'])
 
     return results
 
@@ -419,11 +270,7 @@ def run(X, exp_tab, kernel_space=None):
     model can be specifiec using the kernel_space paramter.
     '''
     if kernel_space == None:
-        l_min, l_max = get_l_limits(X)
-        kernel_space = {
-            'SE': np.logspace(np.log10(l_min), np.log10(l_max), 10),
-            'const': 0
-        }
+        kernel_space = [Kernel.SE, Kernel.const]
 
     logging.info('Performing DE test')
     results = dyn_de(X, exp_tab, kernel_space)
@@ -447,12 +294,8 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     By default searches a grid of periodic covariance matrices and a linear
     covariance matrix.
     '''
-    if kernel_space == None:
-        P_min, P_max = get_l_limits(X)
-        kernel_space = {
-            'PER': np.logspace(np.log10(P_min), np.log10(P_max), 10),
-            'linear': 0
-        }
+    if kernel_space is None:
+        kernel_space = [Kernel.PER, Kernel.linear]
 
     de_exp_tab = exp_tab[DE_mll_results['g']]
 
@@ -461,14 +304,14 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     new_and_old_results = pd.concat((results, DE_mll_results), sort=True)
 
     # Calculate model probabilities
-    mask = new_and_old_results.groupby(['g', 'model'])['BIC'].transform(min) == new_and_old_results['BIC']
-    log_p_data_Hi = -new_and_old_results[mask].pivot_table(values='BIC', index='g', columns='model')
+    mask = new_and_old_results.groupby(['g', 'model'])['marginal_ll'].transform(max) == new_and_old_results['marginal_ll']
+    log_p_data_Hi = -new_and_old_results[mask].pivot_table(values='marginal_ll', index='g', columns='model')
     log_Z = logsumexp(log_p_data_Hi, 1)
     log_p_Hi_data = (log_p_data_Hi.T - log_Z).T
     p_Hi_data = np.exp(log_p_Hi_data).add_suffix('_prob')
 
     # Select most likely model
-    mask = new_and_old_results.groupby('g')['BIC'].transform(min) == new_and_old_results['BIC']
+    mask = new_and_old_results.groupby('g')['marginal_ll'].transform(max) == new_and_old_results['marginal_ll']
     ms_results = new_and_old_results[mask]
 
     ms_results = ms_results.join(p_Hi_data, on='g')
