@@ -236,6 +236,7 @@ def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
             'max_delta': max_delta,
             'max_mu_hat': max_mu_hat,
             'max_s2_t_hat': max_s2_t_hat,
+            'max_s2_e_hat': max_delta * max_s2_t_hat,
             'time': t,
             'n': n,
             'FSV': FSV(np.log(max_delta)),
@@ -263,6 +264,7 @@ def null_fits(exp_tab):
             'max_delta': np.inf,
             'max_mu_hat': max_mu_hat,
             'max_s2_t_hat': 0.,
+            'max_s2_e_hat': max_s2_e_hat,
             'time': 0,
             'n': n
         })
@@ -278,7 +280,7 @@ def const_fits(exp_tab):
     for g in range(G):
         y = exp_tab.iloc[:, g]
         max_mu_hat = y.mean()
-        max_s2_e_hat = y.var()
+        max_s2_e_hat = y.var(ddof=0)
         sum1 = np.square(y - max_mu_hat).sum()
         max_ll = -0.5 * ( n * np.log(max_s2_e_hat) + sum1 / max_s2_e_hat + n * np.log(2 * np.pi) )
 
@@ -288,12 +290,12 @@ def const_fits(exp_tab):
             'max_delta': np.inf,
             'max_mu_hat': max_mu_hat,
             'max_s2_t_hat': 0.,
+            'max_s2_e_hat': max_s2_e_hat,
             'time': 0,
             'n': n
         })
     
     return pd.DataFrame(results)
-
 
 def simulate_const_model(MLL_params, N):
     dfm = np.zeros((N, MLL_params.shape[0]))
@@ -305,6 +307,57 @@ def simulate_const_model(MLL_params, N):
     dfm = pd.DataFrame(dfm)
     return dfm
 
+def score_test(exp_tab, results, US_mats, null_model='const'):
+    null_lls = results.query('model == "{}"'.format(null_model))[['g', 'max_ll', 'max_mu_hat', 'max_s2_e_hat']]
+    model_results = results.query('model != "{}"'.format(null_model))
+    mll_results = model_results.merge(null_lls, on='g', suffixes=('', '_null'))
+
+    N = exp_tab.shape[0]
+    score_statistics = {}
+    P = (np.eye(N) - np.ones((N, N)) / N)
+    P2 = P @ P
+    for k, v in US_mats.items():
+        U,S,UT1 = v['U'], v['S'], v['UT1']
+
+        ret = {}
+        ret['e_tilde'] = 0.5 * np.sum((1 - UT1**2 / N) * S)
+        ret['I_tau_tau'] = 0.5 * np.trace(P @ U @ np.diag(S) @ U.T @ P @ U @ np.diag(S) @ U.T)
+        ret['I_tau_theta'] = 0.5 * np.sum(P2 * (U @ (U.T * S[:, np.newaxis])))
+        ret['I_theta_theta'] = 0.5 * np.trace(P2)
+        score_statistics[k] = ret
+
+    def calc_score_statistic(row):
+        gene = row['g']
+        mu = row['max_mu_hat_null']
+        s2_e = row['max_s2_e_hat_null']
+
+        U, S= US_mats[(row['model'], row['l'])]['U'], US_mats[(row['model'], row['l'])]['S']
+        residual = exp_tab[gene].to_numpy() - mu
+        stat = 0.5 * (np.sum(get_UTy(U, residual)**2 * S) / s2_e**2)
+
+        sst = score_statistics[(row['model'], row['l'])]
+        e_tilde = sst['e_tilde'] / s2_e
+
+        I_tau_tau = sst['I_tau_tau'] / s2_e**2
+        I_tau_theta = sst['I_tau_theta'] / s2_e**2
+        I_theta_theta = sst['I_theta_theta'] / s2_e**2
+        I_tau_tau_tilde = I_tau_tau - I_tau_theta**2 / I_theta_theta
+
+        kappa = I_tau_tau_tilde / (2 * e_tilde)
+        nu = 2 * e_tilde**2 / I_tau_tau_tilde
+        p = stats.chi2.sf(stat / kappa, df=nu)
+        return {'pval': p, 'score_test_statistic': stat / kappa, 'score_test_df': nu}
+
+    mll_results = mll_results.join(mll_results.apply(calc_score_statistic, axis=1, result_type='expand'))
+
+    def cauchy_combine(df):
+        stat = np.mean(np.tan((0.5 - df['pval']) * np.pi))
+        pval = stats.cauchy.sf(stat)
+        ret = df.loc[df['max_ll'].idxmax()]
+        ret['pval'] = pval
+        return ret
+    return mll_results.groupby('g').apply(cauchy_combine).reset_index(drop=True)
+    #return mll_results.iloc[mll_results.groupby('g')['pval'].idxmin()]
 
 def get_mll_results(results, null_model='const'):
     null_lls = results.query('model == "{}"'.format(null_model))[['g', 'max_ll']]
@@ -315,13 +368,7 @@ def get_mll_results(results, null_model='const'):
 
     return mll_results
 
-
-def dyn_de(X, exp_tab, kernel_space=None):
-    if kernel_space == None:
-        kernel_space = {
-            'SE': [5., 25., 50.]
-        }
-
+def _dyn_de(X, exp_tab, kernel_space, US_mats):
     results = []
 
     if 'null' in kernel_space:
@@ -338,62 +385,9 @@ def dyn_de(X, exp_tab, kernel_space=None):
         result['model'] = 'const'
         results.append(result)
 
-    logging.info('Pre-calculating USU^T = K\'s ...')
-    US_mats = []
-    t0 = time()
-    if 'linear' in kernel_space:
-        K = linear_kernel(X)
-        U, S = factor(K)
-        gower = gower_scaling_factor(K)
-        UT1 = get_UT1(U)
-        US_mats.append({
-            'model': 'linear',
-            'M': 3,
-            'l': np.nan,
-            'U': U,
-            'S': S,
-            'UT1': UT1,
-            'Gower': gower
-        })
-
-    if 'SE' in kernel_space:
-        for lengthscale in kernel_space['SE']:
-            K = SE_kernel(X, lengthscale)
-            U, S = factor(K)
-            gower = gower_scaling_factor(K)
-            UT1 = get_UT1(U)
-            US_mats.append({
-                'model': 'SE',
-                'M': 4,
-                'l': lengthscale,
-                'U': U,
-                'S': S,
-                'UT1': UT1,
-                'Gower': gower
-            })
-
-    if 'PER' in kernel_space:
-        for period in kernel_space['PER']:
-            K = cosine_kernel(X, period)
-            U, S = factor(K)
-            gower = gower_scaling_factor(K)
-            UT1 = get_UT1(U)
-            US_mats.append({
-                'model': 'PER',
-                'M': 4,
-                'l': period,
-                'U': U,
-                'S': S,
-                'UT1': UT1,
-                'Gower': gower
-            })
-
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
-
     logging.info('Fitting gene models')
     n_models = len(US_mats)
-    for i, cov in enumerate(tqdm(US_mats, desc='Models: ')):
+    for cov in tqdm(US_mats.values(), desc='Models: '):
         result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'], cov['Gower'])
         result['l'] = cov['l']
         result['M'] = cov['M']
@@ -408,8 +402,72 @@ def dyn_de(X, exp_tab, kernel_space=None):
 
     return results
 
+def _precalc_US_mats(X, kernel_space):
+    logging.info('Pre-calculating USU^T = K\'s ...')
+    US_mats = {}
+    t0 = time()
+    if 'linear' in kernel_space:
+        K = linear_kernel(X)
+        U, S = factor(K)
+        gower = gower_scaling_factor(K)
+        UT1 = get_UT1(U)
+        US_mats[('linear', np.nan)] = {
+            'model': 'linear',
+            'M': 3,
+            'l': np.nan,
+            'U': U,
+            'S': S,
+            'UT1': UT1,
+            'Gower': gower
+        }
 
-def run(X, exp_tab, kernel_space=None):
+    if 'SE' in kernel_space:
+        for lengthscale in kernel_space['SE']:
+            K = SE_kernel(X, lengthscale)
+            U, S = factor(K)
+            gower = gower_scaling_factor(K)
+            UT1 = get_UT1(U)
+            US_mats[('SE', lengthscale)] = {
+                'model': 'SE',
+                'M': 4,
+                'l': lengthscale,
+                'U': U,
+                'S': S,
+                'UT1': UT1,
+                'Gower': gower
+            }
+
+    if 'PER' in kernel_space:
+        for period in kernel_space['PER']:
+            K = cosine_kernel(X, period)
+            U, S = factor(K)
+            gower = gower_scaling_factor(K)
+            UT1 = get_UT1(U)
+            US_mats[('PER', period)] = {
+                'model': 'PER',
+                'M': 5,
+                'l': period,
+                'U': U,
+                'S': S,
+                'UT1': UT1,
+                'Gower': gower
+            }
+
+    t = time() - t0
+    logging.info('Done: {0:.2}s'.format(t))
+    return US_mats
+
+def dyn_de(X, exp_tab, kernel_space=None):
+    if kernel_space == None:
+        kernel_space = {
+            'SE': [5., 25., 50.]
+        }
+
+    US_mats = _precalc_US_mats(X, kernel_space)
+
+    return _dyn_de(X, exp_tab, kernel_space, US_mats)
+
+def run(X, exp_tab, kernel_space=None, signif_test='LRT'):
     ''' Perform SpatialDE test
 
     X : matrix of spatial coordinates times observations
@@ -421,16 +479,23 @@ def run(X, exp_tab, kernel_space=None):
     if kernel_space == None:
         l_min, l_max = get_l_limits(X)
         kernel_space = {
-            'SE': np.logspace(np.log10(l_min), np.log10(l_max), 10),
+            'SE': np.logspace(np.log10(l_min), np.log10(l_max), 5),
+            'PER': np.logspace(np.log10(l_min), np.log10(l_max), 5),
             'const': 0
         }
 
-    logging.info('Performing DE test')
-    results = dyn_de(X, exp_tab, kernel_space)
-    mll_results = get_mll_results(results)
+    US_mats = _precalc_US_mats(X, kernel_space)
 
-    # Perform significance test
-    mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
+    logging.info('Performing DE test')
+    results = _dyn_de(X, exp_tab, kernel_space, US_mats)
+
+
+    if signif_test == 'LRT':
+        mll_results = get_mll_results(results)
+        # Perform significance test
+        mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
+    else:
+        mll_results = score_test(exp_tab, results, US_mats)
     mll_results['qval'] = qvalue(mll_results['pval'])
 
     return mll_results

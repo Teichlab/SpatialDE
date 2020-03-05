@@ -27,11 +27,9 @@ def qvalue(pv, pi0=None):
         pi0 = pi0
     else:
         # evaluate pi0 for different lambdas
-        pi0 = []
         lam = sp.arange(0, 0.90, 0.01)
         counts = sp.array([(pv > i).sum() for i in sp.arange(0, 0.9, 0.01)])
-        for l in range(len(lam)):
-            pi0.append(counts[l]/(m*(1-lam[l])))
+        pi0 = counts / (m * (1 - lam))
 
         pi0 = sp.array(pi0)
 
