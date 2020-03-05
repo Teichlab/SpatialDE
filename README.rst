@@ -85,7 +85,7 @@ SpatialDE significance test example use
 As an example, let us look at spatially dependent gene expression in
 Mouse Olfactory Bulb using a data set published in `Stahl et al
 2016 <http://dx.doi.org/10.1126/science.aaf2403>`__. With the authors
-method, hundrads of locations on a tissue slice can be sampled at once,
+method, hundreds of locations on a tissue slice can be sampled at once,
 and gene expression is measured by sequencing in an unbiased
 whole-transcriptome manner.
 
