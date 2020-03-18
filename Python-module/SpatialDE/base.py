@@ -14,9 +14,14 @@ from .util import bh_adjust, Kernel, GP, SGPIPM, GPControl
 from .gpflow_helpers import *
 
 
-def dyn_de(
+def run(
     X, exp_tab, control: Optional[GPControl] = GPControl(), rng=np.random.default_rng()
 ):
+    """ Perform SpatialDE test
+
+    X : matrix of spatial coordinates times observations
+    exp_tab : Expression table, assumed appropriatealy normalised.
+    """
     if control.gp is None:
         if X.shape[0] < 750:
             control.gp = GP.GPR
@@ -57,7 +62,7 @@ def dyn_de(
             inducers = tf.stack((tf.reshape(xx, (-1,)), tf.reshape(xy, (-1,))), axis=1)
             inducers = gpflow.inducing_variables.InducingPoints(inducers)
         if control.ipm != SGPIPM.free:
-            inducers.Z.trainable = False
+            gpflow.utilities.set_trainable(inducers, False)
 
         method = "BFGS"
         if control.ipm == SGPIPM.free and ninducers > 1e3:
@@ -75,23 +80,7 @@ def dyn_de(
             results[gene] = GeneGP(model, opt.minimize, method=method)
 
     logging.info("Finished fitting models to %i genes" % len(colnames))
-    return results
-
-
-def run(X, exp_tab):
-    """ Perform SpatialDE test
-
-    X : matrix of spatial coordinates times observations
-    exp_tab : Expression table, assumed appropriatealy normalised.
-    """
-    logging.info("Performing DE test")
-    results = dyn_de(X, exp_tab)
-
-    df = results.to_df()
-    df["p.adj"] = bh_adjust(df["pval"].to_numpy())
-
-    return df, results
-
+    return results.to_df()
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     """ Compare model fits with different models.

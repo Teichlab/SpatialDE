@@ -1,13 +1,15 @@
 from time import time
 from abc import ABCMeta, abstractmethod
-from collections import namedtuple, defaultdict
-from typing import Optional
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
 import gpflow
 import tensorflow as tf
 
+from . import util
 from .util import SGPIPM, GP, GPControl, get_dtype
 from .sm_kernel import *
 
@@ -71,8 +73,30 @@ class GeneGPModel(metaclass=ABCMeta):
         kern = SpectralMixture(kernels)
         return SMPlusLinearKernel(kern)
 
+    # this is a dirty hack to fix pickling of frozen models, see https://github.com/GPflow/GPflow/pull/1338
+    @classmethod
+    def _fix_frozen(cls, m):
+        try:
+            mvars = vars(m)
+            for name in list(vars(m).keys()):
+                var = mvars[name]
+                if isinstance(var, tf.Tensor):
+                    delattr(m, name)
+                    setattr(m, name, var)
+                elif isinstance(var, tf.Module):
+                    cls._fix_frozen(var)
+                elif isinstance(var, list):
+                    for v in var:
+                        cls._fix_frozen(var)
+                elif isinstance(var, dict):
+                    for v in var.values():
+                        cls._fix_frozen(v)
+        except TypeError:
+            pass
+        return m
+
 class GPR(gpflow.models.GPR, GeneGPModel):
-    def __init__(self, X, Y, n_kernel_components=5, ard=True, minvar=1e-3):
+    def __init__(self, X, Y, n_kernel_components=5, ard=True, minvar=1e-3, dimnames=None):
         kern = self.mixture_kernel(X, n_kernel_components, ard, minvar)
         super().__init__(
             data=[X, Y], kernel=kern, mean_function=gpflow.mean_functions.Constant()
@@ -82,12 +106,12 @@ class GPR(gpflow.models.GPR, GeneGPModel):
         X = self.data[0]
         self.data[0] = None
         frozen = gpflow.utilities.freeze(self)
-        frozen.data[0] = X
-        return frozen
+        frozen.data[0] = self.data[0] = X
+        return self._fix_frozen(frozen)
 
 class SGPR(gpflow.models.SGPR, GeneGPModel):
     def __init__(
-        self, X, Y, inducing_variable, n_kernel_components=5, ard=True, minvar=1e-3
+        self, X, Y, inducing_variable, n_kernel_components=5, ard=True, minvar=1e-3, dimnames=None
     ):
         kern = self.mixture_kernel(X, n_kernel_components, ard, minvar)
         super().__init__(
@@ -105,17 +129,31 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
         if not trainable_inducers:
             Z = self.inducing_variable.Z
         frozen = gpflow.utilities.freeze(self)
-        frozen.data[0] = X
+        frozen.data[0] = self.data[0] = X
         if not trainable_inducers:
             frozen.inducing_variable.Z = Z
-        return frozen
+        return self._fix_frozen(frozen)
+
+@dataclass(frozen=True)
+class VarPart:
+    spectral_mixture: tf.Tensor
+    linear: tf.Tensor
+    noise: tf.Tensor
+
+@dataclass(frozen=True)
+class Variance:
+    scaled_variance: VarPart
+    fraction_variance: VarPart
+    var_fraction_variance: VarPart
+
+@dataclass(frozen=True)
+class ScoreTest:
+    kappa: util.float
+    nu: util.float
+    U_tilde: util.float
+    pval: util.float
 
 class GeneGP:
-    _VarPart = namedtuple("VarPart", ["spectral_mixture", "linear", "noise"])
-    _Variance = namedtuple(
-        "Variance", ["scaled_variance", "fraction_variance", "var_fraction_variance"]
-    )
-    _ScoreTest = namedtuple("ScoreTest", ["kappa", "nu", "U_tilde", "pval"])
 
     def __init__(self, model: GeneGPModel, minimize_fun, *args, **kwargs):
         self.model = model
@@ -237,23 +275,15 @@ class GeneGP:
         )
         errors = tf.reduce_sum((grads @ self._invHess) * grads, axis=1)
 
-        variances = self._VarPart(variances[0:-2], variances[-2], variances[-1])
-        variance_fractions = self._VarPart(
+        variances = VarPart(variances[0:-2], variances[-2], variances[-1])
+        variance_fractions = VarPart(
             variance_fractions[0:-2], variance_fractions[-2], variance_fractions[-1]
         )
-        errors = self._VarPart(errors[0:-2], errors[-2], errors[-1])
+        errors = VarPart(errors[0:-2], errors[-2], errors[-1])
 
-        self.variances = self._Variance(variances, variance_fractions, errors)
+        self.variances = Variance(variances, variance_fractions, errors)
 
-        X = self.model.data[
-            0
-        ]  # X data are the same for all genes, so copying wastes memory and processing time
-        self.model.data[0] = None
-        frozen = gpflow.utilities.freeze(self.model)
-        self.model.data[0] = X
-        frozen.data[0] = X
-        self.model = frozen
-
+        self.model = self.model.freeze()
         self._frozen = True
 
     def _score_test(self):
@@ -284,9 +314,12 @@ class GeneGP:
         chi2 = tfp.distributions.Chi2(nu)
         pval = chi2.survival_function(stat / kappa)
 
-        return self._ScoreTest(kappa.numpy(), nu.numpy(), stat.numpy(), pval.numpy())
+        return ScoreTest(kappa.numpy(), nu.numpy(), stat.numpy(), pval.numpy())
 
 class DataSetResults(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def __setitem__(self, key, value: GeneGP):
         if not isinstance(value, GeneGP):
             raise TypeError("value must be a GeneGP object")
@@ -294,10 +327,9 @@ class DataSetResults(dict):
 
     def to_df(self):
         df = defaultdict(lambda: [])
-        for gene, res in self:
+        for gene, res in self.items():
             df["gene"].append(gene)
             df["pval"].append(res.pval)
-
             variances = res.variances
             df["FSV"].append(
                 (
@@ -312,4 +344,7 @@ class DataSetResults(dict):
                 df["sm_lengthscale_%i" % i] = k.lengthscale
                 df["sm_period_%i" % i] = k.period
             df["linear_variance"] = res.kernel.linear.variance
-        return pd.DataFrame(df).set_index('gene')
+            df["model"] = res
+        df = pd.DataFrame(df)
+        df["p.adj"] = util.bh_adjust(df.pval.to_numpy())
+        return df.set_index('gene')

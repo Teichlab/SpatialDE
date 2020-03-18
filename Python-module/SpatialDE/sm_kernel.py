@@ -39,14 +39,14 @@ class Spectral(Kernel):
     def log_power_spectrum(self, s):
         s = tf.convert_to_tensor(s, dtype=self.variance.dtype)
         if s.ndim < 2:
-            s = tf.expand_dims(s, 0)
+            s = tf.expand_dims(s, 1)
         loc = tf.broadcast_to(self.period, (s.shape[1],))
         scale_diag = tf.broadcast_to(self.lengthscale, (s.shape[1],))
         mvd = tfp.distributions.MultivariateNormalDiag(loc=1/loc, scale_diag=1/scale_diag)
         return tf.math.log(tf.constant(0.5, dtype=self.variance.dtype)) + tf.reduce_logsumexp([mvd.log_prob(s), mvd.log_prob(-s)], axis=0)
 
 class SpectralMixture(Sum):
-    def __init__(self, kernels=None, **kwargs):
+    def __init__(self, kernels=None, dimnames=None, **kwargs):
         if kernels is None:
             kernels = [Spectral()]
         elif isinstance(kernels, list):
@@ -57,6 +57,11 @@ class SpectralMixture(Sum):
         else:
             kernels = [Spectral() for _ in range(kernels)]
         super().__init__(kernels)
+
+        if dimnames is None:
+            self.dimnames = ("X", "Y")
+        else:
+            self.dimnames = dimnames
 
     def log_power_spectrum(self, s):
         dens = []
@@ -81,12 +86,23 @@ class SpectralMixture(Sum):
         if ylim is None:
             ylim = limits[1]
 
-        x, y = tf.meshgrid(tf.linspace(0, xlim, 1000), tf.linspace(0, ylim, 1000))
-        ps = tf.reshape(self.log_power_spectrum(tf.stack([tf.reshape(x, (-1,)), tf.reshape(y, (-1,))], axis=1)), x.shape)
-
+        dim = max([k.lengthscale.ndim for k in self.kernels] + [k.period.ndim for k in self.kernels])
         fig, ax = plt.subplots()
-        pos = ax.contourf(x, y, ps, levels=tf.linspace(tf.reduce_min(ps), tf.reduce_max(ps), 100), **kwargs)
-        fig.colorbar(pos)
+        if dim < 1:
+            x = tf.linspace(0, xlim, 1000)
+            ps = self.log_power_spectrum(x)
+            ax.plot(x, ps)
+            ax.set_xlim((0, xlim.numpy()))
+            ax.set_xlabel("frequency")
+            ax.set_ylabel("log spectral density")
+        else:
+            x, y = tf.meshgrid(tf.linspace(0, xlim, 1000), tf.linspace(0, ylim, 1000))
+            ps = tf.reshape(self.log_power_spectrum(tf.stack([tf.reshape(x, (-1,)), tf.reshape(y, (-1,))], axis=1)), x.shape)
+            pos = ax.contourf(x, y, ps, levels=tf.linspace(tf.reduce_min(ps), tf.reduce_max(ps), 100), **kwargs)
+            ax.set_xlabel(f"{self.dimnames[0]} frequency")
+            ax.set_ylabel(f"{self.dimnames[1]} frequency")
+            cbar = fig.colorbar(pos)
+            cbar.ax.set_ylabel("log spectral density")
         return ax
 
     def __iter__(self):

@@ -1,10 +1,14 @@
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
 from enum import Enum, auto
-from typing import Optional
+from typing import Optional, Union
 
 import logging
+
+np_float = Union[np.float16, np.float32, np.float64, np.float128]
+float = Union[float, np_float]
 
 class Kernel(Enum):
     null = auto()
