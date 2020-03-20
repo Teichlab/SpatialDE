@@ -154,7 +154,6 @@ class ScoreTest:
     pval: util.float
 
 class GeneGP:
-
     def __init__(self, model: GeneGPModel, minimize_fun, *args, **kwargs):
         self.model = model
 
@@ -173,6 +172,7 @@ class GeneGP:
                 offset += int(tf.size(v))
 
         self.__invHess = None
+        self.model.likelihood.variance.assign(tf.math.reduce_variance(self.model.data[1]))
         self._optimize(minimize_fun, *args, **kwargs)
         self._freeze()
 
@@ -248,9 +248,9 @@ class GeneGP:
             **kwargs,
         )
         if isinstance(res, dict) and "hess_inv" in res:
-            self._invHess = res["hess_inv"]
+            self._invHess = tf.cast(res["hess_inv"], gpflow.config.default_float())
         elif hasattr(res, "hess_inv"):
-            self._invHess = res.hess_inv
+            self._invHess = tf.cast(res.hess_inv, gpflow.config.default_float())
 
     def _freeze(self):
         if self._frozen:

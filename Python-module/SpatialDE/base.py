@@ -4,6 +4,7 @@ import sys
 import logging
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 import gpflow
 
 from tqdm.auto import tqdm
@@ -13,6 +14,15 @@ import pandas as pd
 from .util import bh_adjust, Kernel, GP, SGPIPM, GPControl
 from .gpflow_helpers import *
 
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        print(e)
 
 def run(
     X, exp_tab, control: Optional[GPControl] = GPControl(), rng=np.random.default_rng()
@@ -29,7 +39,7 @@ def run(
             control.gp = GP.SGPR
 
     results = DataSetResults()
-    X = tf.constant(X.to_numpy())
+    X = tf.constant(X.to_numpy(), dtype=gpflow.config.default_float())
     colnames = exp_tab.columns.to_numpy()
     t = tqdm(colnames)
     opt = gpflow.optimizers.Scipy()
@@ -40,7 +50,7 @@ def run(
             t.set_description(gene, refresh=False)
             model = GPR(
                 X,
-                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis]),
+                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis], dtype=gpflow.config.default_float()),
                 control.ncomponents,
                 control.ard,
             )
@@ -72,7 +82,7 @@ def run(
             t.set_description(gene, refresh=False)
             model = SGPR(
                 X,
-                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis]),
+                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis], dtype=gpflow.config.default_float()),
                 inducing_variable=inducers,
                 n_kernel_components=control.ncomponents,
                 ard=control.ard,
