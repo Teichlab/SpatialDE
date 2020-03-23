@@ -1,301 +1,35 @@
-''' Main underlying functions for SpatialDE functionality.
-'''
+""" Main underlying functions for SpatialDE functionality.
+"""
 import sys
 import logging
 from time import time
 import warnings
+from typing import Optional
 
 import numpy as np
-from scipy import optimize
-from scipy import linalg
 from scipy import stats
-from scipy.misc import derivative
 from scipy.special import logsumexp
-
-with warnings.catch_warnings():
-    warnings.simplefilter('ignore')
-    from tqdm.autonotebook import tqdm
-
 import pandas as pd
 
-from .util import qvalue
+from tqdm.auto import tqdm
+
+from .kernels import SquaredExponential, Cosine, Linear
+from .models import Model, Constant, Null, model_factory
+from .util import bh_adjust
 
 
 def get_l_limits(X):
     Xsq = np.sum(np.square(X), 1)
-    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = -2.0 * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 0, np.inf)
     R_vals = np.unique(R2.flatten())
     R_vals = R_vals[R_vals > 1e-8]
-    
-    l_min = np.sqrt(R_vals.min()) / 2.
-    l_max = np.sqrt(R_vals.max()) * 2.
-    
+
+    l_min = np.sqrt(R_vals.min()) / 2.0
+    l_max = np.sqrt(R_vals.max()) * 2.0
+
     return l_min, l_max
 
-## Kernels ##
-
-def SE_kernel(X, l):
-    Xsq = np.sum(np.square(X), 1)
-    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
-    R2 = np.clip(R2, 1e-12, np.inf)
-    return np.exp(-R2 / (2 * l ** 2))
-
-
-def linear_kernel(X):
-    K = np.dot(X, X.T)
-    return K / K.max()
-
-
-def cosine_kernel(X, p):
-    ''' Periodic kernel as l -> oo in [Lloyd et al 2014]
-
-    Easier interpretable composability with SE?
-    '''
-    Xsq = np.sum(np.square(X), 1)
-    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
-    R2 = np.clip(R2, 1e-12, np.inf)
-    return np.cos(2 * np.pi * np.sqrt(R2) / p)
-
-
-def gower_scaling_factor(K):
-    ''' Gower normalization factor for covariance matric K
-
-    Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
-    '''
-    n = K.shape[0]
-    P = np.eye(n) - np.ones((n, n)) / n
-    KP = K - K.mean(0)[:, np.newaxis]
-    trPKP = np.sum(P * KP)
-
-    return trPKP / (n - 1)
-
-
-def factor(K):
-    S, U = np.linalg.eigh(K)
-    # .clip removes negative eigenvalues
-    return U, np.clip(S, 1e-8, None)
-
-
-def get_UT1(U):
-    return U.sum(0)
-
-
-def get_UTy(U, y):
-    return y.dot(U)
-
-
-def mu_hat(delta, UTy, UT1, S, n, Yvar=None):
-    ''' ML Estimate of bias mu, function of delta.
-    '''
-    if Yvar is None:
-        Yvar = np.ones_like(S)
-
-    UT1_scaled = UT1 / (S + delta * Yvar)
-    sum_1 = UT1_scaled.dot(UTy)
-    sum_2 = UT1_scaled.dot(UT1)
-
-    return sum_1 / sum_2
-
-
-def s2_t_hat(delta, UTy, UT1, S, n, mu_hat, Yvar=None):
-    ''' ML Estimate of structured noise, function of delta
-    '''
-    if Yvar is None:
-        Yvar = np.ones_like(S)
-
-    numerator = UTy - UT1 * mu_hat
-    numerator_scaled = numerator / (S + delta * Yvar)
-    return numerator_scaled.dot(numerator) / n
-
-
-def LL(delta, UTy, UT1, S, n, Yvar=None):
-    ''' Log-likelihood of GP model as a function of delta.
-
-    The parameter delta is the ratio s2_e / s2_t, where s2_e is the
-    observation noise and s2_t is the noise explained by covariance
-    in time or space.
-    '''
-
-    mu_h = mu_hat(delta, UTy, UT1, S, n, Yvar)
-    
-    if Yvar is None:
-        Yvar = np.ones_like(S)
-
-    sum_1 = (np.square(UTy - UT1 * mu_h) / (S + delta * Yvar)).sum()
-    sum_2 = np.log(S + delta * Yvar).sum()
-
-    with np.errstate(divide='ignore'):
-        return -0.5 * (n * np.log(2 * np.pi) + n * np.log(sum_1 / n) + sum_2 + n)
-
-
-def logdelta_prior_lpdf(log_delta):
-    s2p = 100.
-    return -np.log(np.sqrt(2 * np.pi * s2p)) - np.square(log_delta - 20.) / (2 * s2p)
-
-
-def make_objective(UTy, UT1, S, n, Yvar=None):
-    def LL_obj(log_delta):
-        return -LL(np.exp(log_delta), UTy, UT1, S, n, Yvar)
-
-    return LL_obj
-
-
-def brent_max_LL(UTy, UT1, S, n):
-    LL_obj = make_objective(UTy, UT1, S, n)
-    o = optimize.minimize_scalar(LL_obj, bounds=[-10, 10], method='bounded', options={'maxiter': 32})
-    max_ll = -o.fun
-    max_delta = np.exp(o.x)
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat)
-
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
-
-
-def lbfgsb_max_LL(UTy, UT1, S, n, Yvar=None):
-    LL_obj = make_objective(UTy, UT1, S, n, Yvar)
-    min_boundary = -10
-    max_boundary = 20.
-    x, f, d = optimize.fmin_l_bfgs_b(LL_obj, 0., approx_grad=True,
-                                                 bounds=[(min_boundary, max_boundary)],
-                                                 maxfun=64, factr=1e12, epsilon=1e-4)
-    max_ll = -f
-    max_delta = np.exp(x[0])
-
-    boundary_ll = -LL_obj(max_boundary)
-    if boundary_ll > max_ll:
-        max_ll = boundary_ll
-        max_delta = np.exp(max_boundary)
-
-    boundary_ll = -LL_obj(min_boundary)
-    if boundary_ll > max_ll:
-        max_ll = boundary_ll
-        max_delta = np.exp(min_boundary)
-
-
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n, Yvar)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat, Yvar)
-
-    s2_logdelta = 1. / (derivative(LL_obj, np.log(max_delta), n=2) ** 2)
-
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta
-
-
-def search_max_LL(UTy, UT1, S, n, num=32):
-    ''' Search for delta which maximizes log likelihood.
-    '''
-    min_obj = np.inf
-    max_log_delta = np.nan
-    LL_obj = make_objective(UTy, UT1, S, n)
-    for log_delta in np.linspace(start=-10, stop=20, num=num):
-        cur_obj = LL_obj(log_delta)
-        if cur_obj < min_obj:
-            min_obj = cur_obj
-            max_log_delta = log_delta
-
-    max_delta = np.exp(max_log_delta)
-    max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n)
-    max_s2_t_hat = s2_t_hat(max_delta, UTy, UT1, S, n, max_mu_hat)
-    max_ll = -min_obj
-
-    return max_ll, max_delta, max_mu_hat, max_s2_t_hat
-
-
-def make_FSV(UTy, UT1, S, n, Gower):
-    def FSV(log_delta):
-        mu = mu_hat(np.exp(log_delta), UTy, UT1, S, n)
-        s2_t = s2_t_hat(np.exp(log_delta), UTy, UT1, S, n, mu)
-        s2_t_g = s2_t * Gower
-
-        return s2_t_g / (s2_t_g + np.exp(log_delta) * s2_t)
-
-    return FSV
-
-
-def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
-    ''' Fit GPs after pre-processing for particular lengthscale
-    '''
-    results = []
-    n, G = exp_tab.shape
-    for g in tqdm(range(G), leave=False):
-        y = exp_tab.iloc[:, g]
-        UTy = get_UTy(U, y)
-
-        t0 = time()
-        max_reg_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta = lbfgsb_max_LL(UTy, UT1, S, n)
-        max_ll = max_reg_ll
-        t = time() - t0
-
-        # Estimate standard error of Fraction Spatial Variance
-        FSV = make_FSV(UTy, UT1, S, n, Gower)
-        s2_FSV = derivative(FSV, np.log(max_delta), n=1) ** 2 * s2_logdelta
-        
-        results.append({
-            'g': exp_tab.columns[g],
-            'max_ll': max_ll,
-            'max_delta': max_delta,
-            'max_mu_hat': max_mu_hat,
-            'max_s2_t_hat': max_s2_t_hat,
-            'max_s2_e_hat': max_delta * max_s2_t_hat,
-            'time': t,
-            'n': n,
-            'FSV': FSV(np.log(max_delta)),
-            's2_FSV': s2_FSV,
-            's2_logdelta': s2_logdelta
-        })
-        
-    return pd.DataFrame(results)
-
-
-def null_fits(exp_tab):
-    ''' Get maximum LL for null model
-    '''
-    results = []
-    n, G = exp_tab.shape
-    for g in range(G):
-        y = exp_tab.iloc[:, g]
-        max_mu_hat = 0.
-        max_s2_e_hat = np.square(y).sum() / n  # mll estimate
-        max_ll = -0.5 * (n * np.log(2 * np.pi) + n + n * np.log(max_s2_e_hat))
-
-        results.append({
-            'g': exp_tab.columns[g],
-            'max_ll': max_ll,
-            'max_delta': np.inf,
-            'max_mu_hat': max_mu_hat,
-            'max_s2_t_hat': 0.,
-            'max_s2_e_hat': max_s2_e_hat,
-            'time': 0,
-            'n': n
-        })
-    
-    return pd.DataFrame(results)
-
-
-def const_fits(exp_tab):
-    ''' Get maximum LL for const model
-    '''
-    results = []
-    n, G = exp_tab.shape
-    for g in range(G):
-        y = exp_tab.iloc[:, g]
-        max_mu_hat = y.mean()
-        max_s2_e_hat = y.var(ddof=0)
-        sum1 = np.square(y - max_mu_hat).sum()
-        max_ll = -0.5 * ( n * np.log(max_s2_e_hat) + sum1 / max_s2_e_hat + n * np.log(2 * np.pi) )
-
-        results.append({
-            'g': exp_tab.columns[g],
-            'max_ll': max_ll,
-            'max_delta': np.inf,
-            'max_mu_hat': max_mu_hat,
-            'max_s2_t_hat': 0.,
-            'max_s2_e_hat': max_s2_e_hat,
-            'time': 0,
-            'n': n
-        })
-    
-    return pd.DataFrame(results)
 
 def simulate_const_model(MLL_params, N):
     dfm = np.zeros((N, MLL_params.shape[0]))
@@ -303,206 +37,172 @@ def simulate_const_model(MLL_params, N):
         params = params[1]
         s2_e = params.max_s2_t_hat * params.max_delta
         dfm[:, i] = np.random.normal(params.max_mu_hat, s2_e, N)
-        
+
     dfm = pd.DataFrame(dfm)
     return dfm
 
-def score_test(exp_tab, results, US_mats, null_model='const'):
-    null_lls = results.query('model == "{}"'.format(null_model))[['g', 'max_ll', 'max_mu_hat', 'max_s2_e_hat']]
+
+def get_mll_results(results, null_model="const"):
+    null_lls = results.query('model == "{}"'.format(null_model))[["g", "max_ll"]]
     model_results = results.query('model != "{}"'.format(null_model))
-    mll_results = model_results.merge(null_lls, on='g', suffixes=('', '_null'))
-
-    N = exp_tab.shape[0]
-    score_statistics = {}
-    P = (np.eye(N) - np.ones((N, N)) / N)
-    P2 = P @ P
-    for k, v in US_mats.items():
-        U,S,UT1 = v['U'], v['S'], v['UT1']
-
-        ret = {}
-        ret['e_tilde'] = 0.5 * np.sum((1 - UT1**2 / N) * S)
-        ret['I_tau_tau'] = 0.5 * np.trace(P @ U @ np.diag(S) @ U.T @ P @ U @ np.diag(S) @ U.T)
-        ret['I_tau_theta'] = 0.5 * np.sum(P2 * (U @ (U.T * S[:, np.newaxis])))
-        ret['I_theta_theta'] = 0.5 * np.trace(P2)
-        score_statistics[k] = ret
-
-    def calc_score_statistic(row):
-        gene = row['g']
-        mu = row['max_mu_hat_null']
-        s2_e = row['max_s2_e_hat_null']
-
-        U, S= US_mats[(row['model'], row['l'])]['U'], US_mats[(row['model'], row['l'])]['S']
-        residual = exp_tab[gene].to_numpy() - mu
-        stat = 0.5 * (np.sum(get_UTy(U, residual)**2 * S) / s2_e**2)
-
-        sst = score_statistics[(row['model'], row['l'])]
-        e_tilde = sst['e_tilde'] / s2_e
-
-        I_tau_tau = sst['I_tau_tau'] / s2_e**2
-        I_tau_theta = sst['I_tau_theta'] / s2_e**2
-        I_theta_theta = sst['I_theta_theta'] / s2_e**2
-        I_tau_tau_tilde = I_tau_tau - I_tau_theta**2 / I_theta_theta
-
-        kappa = I_tau_tau_tilde / (2 * e_tilde)
-        nu = 2 * e_tilde**2 / I_tau_tau_tilde
-        p = stats.chi2.sf(stat / kappa, df=nu)
-        return {'pval': p, 'score_test_statistic': stat / kappa, 'score_test_df': nu}
-
-    mll_results = mll_results.join(mll_results.apply(calc_score_statistic, axis=1, result_type='expand'))
-
-    def cauchy_combine(df):
-        stat = np.mean(np.tan((0.5 - df['pval']) * np.pi))
-        pval = stats.cauchy.sf(stat)
-        ret = df.loc[df['max_ll'].idxmax()]
-        ret['pval'] = pval
-        return ret
-    return mll_results.groupby('g').apply(cauchy_combine).reset_index(drop=True)
-    #return mll_results.iloc[mll_results.groupby('g')['pval'].idxmin()]
-
-def get_mll_results(results, null_model='const'):
-    null_lls = results.query('model == "{}"'.format(null_model))[['g', 'max_ll']]
-    model_results = results.query('model != "{}"'.format(null_model))
-    model_results = model_results[model_results.groupby(['g'])['max_ll'].transform(max) == model_results['max_ll']]
-    mll_results = model_results.merge(null_lls, on='g', suffixes=('', '_null'))
-    mll_results['LLR'] = mll_results['max_ll'] - mll_results['max_ll_null']
+    model_results = model_results[
+        model_results.groupby(["g", "model"])["max_ll"].transform(max)
+        == model_results["max_ll"]
+    ]
+    mll_results = model_results.merge(null_lls, on="g", suffixes=("", "_null"))
+    mll_results["LLR"] = mll_results["max_ll"] - mll_results["max_ll_null"]
 
     return mll_results
 
-def _dyn_de(X, exp_tab, kernel_space, US_mats):
+
+def inducers_grid(X, ninducers):
+    rngmin = X.min(0)
+    rngmax = X.max(0)
+    xvals = np.linspace(rngmin[0], rngmax[0], int(np.ceil(np.sqrt(ninducers))))
+    yvals = np.linspace(rngmin[1], rngmax[1], int(np.ceil(np.sqrt(ninducers))))
+    xx, xy = np.meshgrid(xvals, yvals)
+    return np.hstack((xx.reshape((xx.size, 1)), xy.reshape((xy.size, 1))))
+
+
+def fit_model(
+    model: Model,
+    exp_tab: pd.DataFrame,
+    null_predictions: Optional[dict] = None,
+    null_variances: Optional[dict] = None,
+):
+    results = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        for i, gene in enumerate(tqdm(exp_tab.columns)):
+            y = exp_tab.iloc[:, i].to_numpy()
+            model.y = y
+            t0 = time()
+
+            res = model.optimize()
+            t = time() - t0
+            res = {
+                "g": gene,
+                "max_ll": model.log_marginal_likelihood,
+                "max_delta": model.delta,
+                "max_mu_hat": model.mu,
+                "max_s2_t_hat": model.sigma_s2,
+                "max_s2_e_hat": model.sigma_n2,
+                "time": t,
+                "n": model.n,
+                "FSV": model.FSV,
+                "s2_FSV": model.s2_FSV,
+                "s2_logdelta": model.s2_logdelta,
+                "converged": res.success,
+                "M": model.n_parameters,
+            }
+            for (k, v) in vars(model.kernel).items():
+                if k not in res:
+                    res[k] = v
+            if (
+                null_predictions is not None
+                and null_variances is not None
+                and gene in null_predictions
+                and gene in null_variances
+            ):
+                stest = model.score_test(null_predictions[gene], null_variances[gene])
+                res["pval"] = stest.pval
+                res["kappa"] = stest.kappa
+                res["U_tilde"] = stest.U_tilde
+                res["nu"] = stest.nu
+            results.append(res)
+    return pd.DataFrame(results)
+
+
+def factory(kern: str, X: np.ndarray, lengthscale: Optional[float] = None):
+    Z = None
+    if X.shape[0] > 1000:
+        Z = inducers_grid(X, np.maximum(100, np.sqrt(X.shape[0])))
+
+    if kern == "linear":
+        return model_factory(X, Z, Linear())
+    elif kern == "SE":
+        return model_factory(X, Z, SquaredExponential(lengthscale))
+    elif kern == "PER":
+        return model_factory(X, Z, Cosine(lengthscale))
+    elif kern == "const":
+        return Constant(X)
+    elif kern == "null":
+        return Null(X)
+    else:
+        raise ValueError("unknown kernel")
+
+
+def kspace_walk(kernel_space: dict, X: np.ndarray):
+    for kern, lengthscales in kernel_space.items():
+        try:
+            for l in lengthscales:
+                yield factory(kern, X, l), kern
+        except TypeError:
+            yield factory(kern, X, lengthscales), kern
+
+def dyn_de(
+    X: pd.DataFrame, exp_tab: pd.DataFrame, kernel_space=None, null_model="const"
+):
+    if kernel_space == None:
+        kernel_space = {"SE": [5.0, 25.0, 50.0]}
+
     results = []
 
-    if 'null' in kernel_space:
-        result = null_fits(exp_tab)
-        result['l'] = np.nan
-        result['M'] = 1
-        result['model'] = 'null'
-        results.append(result)
+    logging.info("Fitting null model")
+    nullmodel = factory(null_model, X.to_numpy())
+    null_fits = fit_model(nullmodel, exp_tab).dropna(axis=1)
+    null_predictions = null_fits.set_index("g")["max_mu_hat"].to_dict()
+    null_variances = null_fits.set_index("g")["max_s2_e_hat"].to_dict()
 
-    if 'const' in kernel_space:
-        result = const_fits(exp_tab)
-        result['l'] = np.nan
-        result['M'] = 2
-        result['model'] = 'const'
-        results.append(result)
-
-    logging.info('Fitting gene models')
-    n_models = len(US_mats)
-    for cov in tqdm(US_mats.values(), desc='Models: '):
-        result = lengthscale_fits(exp_tab, cov['U'], cov['UT1'], cov['S'], cov['Gower'])
-        result['l'] = cov['l']
-        result['M'] = cov['M']
-        result['model'] = cov['model']
-        results.append(result)
+    logging.info("Fitting gene models")
+    n_models = 0
+    for model, mname in kspace_walk(kernel_space, X.to_numpy()):
+        res = fit_model(model, exp_tab, null_predictions, null_variances)
+        res["model"] = mname
+        results.append(res)
+        n_models += 1
 
     n_genes = exp_tab.shape[1]
-    logging.info('Finished fitting {} models to {} genes'.format(n_models, n_genes))
+    logging.info("Finished fitting {} models to {} genes".format(n_models, n_genes))
 
     results = pd.concat(results, sort=True).reset_index(drop=True)
-    results['BIC'] = -2 * results['max_ll'] + results['M'] * np.log(results['n'])
+    sizes = results.groupby(["model", "g"]).size().groupby("model").unique()
+    results = results.set_index("model")
+    results.loc[sizes > 1, "M"] += 1
+    results = results.reset_index()
+    results["BIC"] = -2 * results["max_ll"] + results["M"] * np.log(results["n"])
 
-    return results
+    return results, null_fits
 
-def _precalc_US_mats(X, kernel_space):
-    logging.info('Pre-calculating USU^T = K\'s ...')
-    US_mats = {}
-    t0 = time()
-    if 'linear' in kernel_space:
-        K = linear_kernel(X)
-        U, S = factor(K)
-        gower = gower_scaling_factor(K)
-        UT1 = get_UT1(U)
-        US_mats[('linear', np.nan)] = {
-            'model': 'linear',
-            'M': 3,
-            'l': np.nan,
-            'U': U,
-            'S': S,
-            'UT1': UT1,
-            'Gower': gower
-        }
 
-    if 'SE' in kernel_space:
-        for lengthscale in kernel_space['SE']:
-            K = SE_kernel(X, lengthscale)
-            U, S = factor(K)
-            gower = gower_scaling_factor(K)
-            UT1 = get_UT1(U)
-            US_mats[('SE', lengthscale)] = {
-                'model': 'SE',
-                'M': 4,
-                'l': lengthscale,
-                'U': U,
-                'S': S,
-                'UT1': UT1,
-                'Gower': gower
-            }
-
-    if 'PER' in kernel_space:
-        for period in kernel_space['PER']:
-            K = cosine_kernel(X, period)
-            U, S = factor(K)
-            gower = gower_scaling_factor(K)
-            UT1 = get_UT1(U)
-            US_mats[('PER', period)] = {
-                'model': 'PER',
-                'M': 5,
-                'l': period,
-                'U': U,
-                'S': S,
-                'UT1': UT1,
-                'Gower': gower
-            }
-
-    t = time() - t0
-    logging.info('Done: {0:.2}s'.format(t))
-    return US_mats
-
-def dyn_de(X, exp_tab, kernel_space=None):
-    if kernel_space == None:
-        kernel_space = {
-            'SE': [5., 25., 50.]
-        }
-
-    US_mats = _precalc_US_mats(X, kernel_space)
-
-    return _dyn_de(X, exp_tab, kernel_space, US_mats)
-
-def run(X, exp_tab, kernel_space=None, signif_test='LRT'):
-    ''' Perform SpatialDE test
+def run(X, exp_tab, kernel_space=None, null_model="const"):
+    """ Perform SpatialDE test
 
     X : matrix of spatial coordinates times observations
     exp_tab : Expression table, assumed appropriatealy normalised.
 
     The grid of covariance matrices to search over for the alternative
-    model can be specifiec using the kernel_space paramter.
-    '''
+    model can be specifiec using the kernel_space parameter.
+    """
     if kernel_space == None:
         l_min, l_max = get_l_limits(X)
         kernel_space = {
-            'SE': np.logspace(np.log10(l_min), np.log10(l_max), 5),
-            'PER': np.logspace(np.log10(l_min), np.log10(l_max), 5),
-            'const': 0
+            "SE": np.logspace(np.log10(l_min), np.log10(l_max), 10),
+            #'PER': np.logspace(np.log10(l_min), np.log10(l_max), 10),
+            #'linear': None
         }
 
-    US_mats = _precalc_US_mats(X, kernel_space)
+    logging.info("Performing DE test")
+    results, null_fits = dyn_de(X, exp_tab, kernel_space, null_model)
 
-    logging.info('Performing DE test')
-    results = _dyn_de(X, exp_tab, kernel_space, US_mats)
+    results = results.loc[results.groupby(["model", "g"])["max_ll"].idxmin()]
+    results = results.loc[results.groupby("g")["BIC"].idxmin()]
+    results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
-
-    if signif_test == 'LRT':
-        mll_results = get_mll_results(results)
-        # Perform significance test
-        mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
-    else:
-        mll_results = score_test(exp_tab, results, US_mats)
-    mll_results['qval'] = qvalue(mll_results['pval'])
-
-    return mll_results
-
+    return results.merge(null_fits, on="g", suffixes=("", "_null"))
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
-    ''' Compare model fits with different models.
+    """ Compare model fits with different models.
 
     This way DE genes can be classified to interpretable function classes.
 
@@ -511,36 +211,45 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
 
     By default searches a grid of periodic covariance matrices and a linear
     covariance matrix.
-    '''
+    """
     if kernel_space == None:
         P_min, P_max = get_l_limits(X)
         kernel_space = {
-            'PER': np.logspace(np.log10(P_min), np.log10(P_max), 10),
-            'linear': 0
+            "PER": np.logspace(np.log10(P_min), np.log10(P_max), 10),
+            "linear": 0,
         }
 
-    de_exp_tab = exp_tab[DE_mll_results['g']]
+    de_exp_tab = exp_tab[DE_mll_results["g"]]
 
-    logging.info('Performing model search')
+    logging.info("Performing model search")
     results = dyn_de(X, de_exp_tab, kernel_space)
     new_and_old_results = pd.concat((results, DE_mll_results), sort=True)
 
     # Calculate model probabilities
-    mask = new_and_old_results.groupby(['g', 'model'])['BIC'].transform(min) == new_and_old_results['BIC']
-    log_p_data_Hi = -new_and_old_results[mask].pivot_table(values='BIC', index='g', columns='model')
+    mask = (
+        new_and_old_results.groupby(["g", "model"])["BIC"].transform(min)
+        == new_and_old_results["BIC"]
+    )
+    log_p_data_Hi = -new_and_old_results[mask].pivot_table(
+        values="BIC", index="g", columns="model"
+    )
     log_Z = logsumexp(log_p_data_Hi, 1)
     log_p_Hi_data = (log_p_data_Hi.T - log_Z).T
-    p_Hi_data = np.exp(log_p_Hi_data).add_suffix('_prob')
+    p_Hi_data = np.exp(log_p_Hi_data).add_suffix("_prob")
 
     # Select most likely model
-    mask = new_and_old_results.groupby('g')['BIC'].transform(min) == new_and_old_results['BIC']
+    mask = (
+        new_and_old_results.groupby("g")["BIC"].transform(min)
+        == new_and_old_results["BIC"]
+    )
     ms_results = new_and_old_results[mask]
 
-    ms_results = ms_results.join(p_Hi_data, on='g')
+    ms_results = ms_results.join(p_Hi_data, on="g")
 
     # Retain information from significance testing in the new table
-    transfer_columns = ['pval', 'qval', 'max_ll_null']
-    ms_results = ms_results.drop(transfer_columns, 1) \
-        .merge(DE_mll_results[transfer_columns + ['g']], on='g')
+    transfer_columns = ["pval", "qval", "max_ll_null"]
+    ms_results = ms_results.drop(transfer_columns, 1).merge(
+        DE_mll_results[transfer_columns + ["g"]], on="g"
+    )
 
     return ms_results
