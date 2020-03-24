@@ -282,7 +282,7 @@ class SGPR(GPModel):
         K_uf = kern.K(Z, X)
         K_ff = kern.K_diag(X)
 
-        L = np.linalg.cholesky(K_uu)
+        L = np.linalg.cholesky(K_uu + 1e-6 * np.eye(Z.shape[0]))
         LK_uf = scipy.linalg.solve_triangular(L, K_uf, lower=True)
         A = LK_uf @ LK_uf.T
 

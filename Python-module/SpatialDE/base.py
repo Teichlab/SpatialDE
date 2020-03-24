@@ -148,11 +148,14 @@ def dyn_de(
 
     results = []
 
-    logging.info("Fitting null model")
-    nullmodel = factory(null_model, X.to_numpy())
-    null_fits = fit_model(nullmodel, exp_tab).dropna(axis=1)
-    null_predictions = null_fits.set_index("g")["max_mu_hat"].to_dict()
-    null_variances = null_fits.set_index("g")["max_s2_e_hat"].to_dict()
+    if null_model is not None:
+        logging.info("Fitting null model")
+        nullmodel = factory(null_model, X.to_numpy())
+        null_fits = fit_model(nullmodel, exp_tab).dropna(axis=1)
+        null_predictions = null_fits.set_index("g")["max_mu_hat"].to_dict()
+        null_variances = null_fits.set_index("g")["max_s2_e_hat"].to_dict()
+    else:
+        null_predictions = null_variances = null_fits = None
 
     logging.info("Fitting gene models")
     n_models = 0
@@ -195,11 +198,13 @@ def run(X, exp_tab, kernel_space=None, null_model="const"):
     logging.info("Performing DE test")
     results, null_fits = dyn_de(X, exp_tab, kernel_space, null_model)
 
-    results = results.loc[results.groupby(["model", "g"])["max_ll"].idxmin()]
+    results = results.loc[results.groupby(["model", "g"])["max_ll"].idxmax()]
     results = results.loc[results.groupby("g")["BIC"].idxmin()]
     results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
-    return results.merge(null_fits, on="g", suffixes=("", "_null"))
+    if null_fits is not None:
+        results = results.merge(null_fits, on="g", suffixes=("", "_null"))
+    return results
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     """ Compare model fits with different models.
