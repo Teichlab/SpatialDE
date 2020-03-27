@@ -10,15 +10,6 @@ from scipy.stats import chi2
 
 from .kernels import Kernel
 
-
-@dataclass(frozen=True)
-class ScoreTest:
-    kappa: float
-    nu: float
-    U_tilde: float
-    pval: float
-
-
 class Model(metaclass=ABCMeta):
     def __init__(self, X: np.ndarray, kernel: Kernel):
         self.X = X
@@ -30,30 +21,6 @@ class Model(metaclass=ABCMeta):
 
     def _reset(self):
         pass
-
-    def score_test(
-        self, null_prediction: Union[float, np.ndarray], null_variance: float
-    ) -> ScoreTest:
-        scaling = 1 / (2 * null_variance ** 2)
-        P = np.eye(self.n) - np.full((self.n, self.n), 1 / self.n)
-        PK = self.K - np.mean(self.K, axis=0, keepdims=True)
-
-        I_tau_tau = scaling * np.sum(PK ** 2)
-        I_tau_theta = scaling * np.trace(PK)  # P is idempotent
-        I_theta_theta = scaling * np.trace(P)
-        I_tau_tau_tilde = I_tau_tau - I_tau_theta ** 2 / I_theta_theta
-
-        e_tilde = 1 / (2 * null_variance) * np.trace(PK)
-        kappa = I_tau_tau / (2 * e_tilde)
-        nu = 2 * e_tilde ** 2 / I_tau_tau
-
-        res = self.y - null_prediction
-        stat = scaling * np.dot(res, np.dot(self.K, res))
-
-        ch2 = chi2(nu)
-        pval = ch2.sf(stat / kappa)
-
-        return ScoreTest(kappa, nu, stat, pval)
 
     @property
     def n_parameters(self) -> float:

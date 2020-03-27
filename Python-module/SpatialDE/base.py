@@ -16,6 +16,7 @@ from tqdm.auto import tqdm
 from .kernels import SquaredExponential, Cosine, Linear
 from .models import Model, Constant, Null, model_factory
 from .util import bh_adjust
+from .score_test import ScoreTest, GaussianConstantScoreTest, GaussianNullScoreTest
 
 
 def get_l_limits(X):
@@ -67,8 +68,7 @@ def inducers_grid(X, ninducers):
 def fit_model(
     model: Model,
     exp_tab: pd.DataFrame,
-    null_predictions: Optional[dict] = None,
-    null_variances: Optional[dict] = None,
+    score_test: ScoreTest
 ):
     results = []
     with warnings.catch_warnings():
@@ -98,13 +98,7 @@ def fit_model(
             for (k, v) in vars(model.kernel).items():
                 if k not in res:
                     res[k] = v
-            if (
-                null_predictions is not None
-                and null_variances is not None
-                and gene in null_predictions
-                and gene in null_variances
-            ):
-                stest = model.score_test(null_predictions[gene], null_variances[gene])
+                stest = score_test()
                 res["pval"] = stest.pval
                 res["kappa"] = stest.kappa
                 res["U_tilde"] = stest.U_tilde
@@ -148,19 +142,16 @@ def dyn_de(
 
     results = []
 
-    if null_model is not None:
-        logging.info("Fitting null model")
-        nullmodel = factory(null_model, X.to_numpy())
-        null_fits = fit_model(nullmodel, exp_tab).dropna(axis=1)
-        null_predictions = null_fits.set_index("g")["max_mu_hat"].to_dict()
-        null_variances = null_fits.set_index("g")["max_s2_e_hat"].to_dict()
-    else:
-        null_predictions = null_variances = null_fits = None
+    stest_class = lambda x: None
+    if null_model == 'const':
+        stest_class = GaussianConstantScoreTest
+    elif null_model == 'null':
+        stest_class = GaussianNullScoreTest
 
     logging.info("Fitting gene models")
     n_models = 0
     for model, mname in kspace_walk(kernel_space, X.to_numpy()):
-        res = fit_model(model, exp_tab, null_predictions, null_variances)
+        res = fit_model(model, exp_tab, stest_class(model))
         res["model"] = mname
         results.append(res)
         n_models += 1
@@ -175,7 +166,7 @@ def dyn_de(
     results = results.reset_index()
     results["BIC"] = -2 * results["max_ll"] + results["M"] * np.log(results["n"])
 
-    return results, null_fits
+    return results
 
 
 def run(X, exp_tab, kernel_space=None, null_model="const"):
@@ -196,14 +187,12 @@ def run(X, exp_tab, kernel_space=None, null_model="const"):
         }
 
     logging.info("Performing DE test")
-    results, null_fits = dyn_de(X, exp_tab, kernel_space, null_model)
+    results = dyn_de(X, exp_tab, kernel_space, null_model)
 
     results = results.loc[results.groupby(["model", "g"])["max_ll"].idxmax()]
     results = results.loc[results.groupby("g")["BIC"].idxmin()]
     results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
-    if null_fits is not None:
-        results = results.merge(null_fits, on="g", suffixes=("", "_null"))
     return results
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
