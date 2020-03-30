@@ -18,6 +18,7 @@ class Model(metaclass=ABCMeta):
         self.K = self.kernel.K(self.X)
 
         self._y = None
+        self._rawy = None
 
     def _reset(self):
         pass
@@ -74,9 +75,17 @@ class Model(metaclass=ABCMeta):
     def y(self) -> np.ndarray:
         return self._y
 
-    @y.setter
-    def y(self, ny: np.ndarray):
-        self._y = ny
+    @property
+    def rawy(self) -> np.ndarray:
+        return self._rawy
+
+    @rawy.setter
+    def rawy(self, ny:np.ndarray):
+        self._rawy = ny
+
+    def sety(self, y: np.ndarray, rawy: np.ndarray):
+        self._y = y
+        self._rawy = rawy
         self._reset()
         self._ychanged()
 

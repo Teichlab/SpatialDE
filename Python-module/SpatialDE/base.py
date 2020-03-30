@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 from .kernels import SquaredExponential, Cosine, Linear
 from .models import Model, Constant, Null, model_factory
 from .util import bh_adjust
-from .score_test import ScoreTest, GaussianConstantScoreTest, GaussianNullScoreTest
+from .score_test import ScoreTest, GaussianConstantScoreTest, GaussianNullScoreTest, NegativeBinomialScoreTest
 
 
 def get_l_limits(X):
@@ -68,6 +68,7 @@ def inducers_grid(X, ninducers):
 def fit_model(
     model: Model,
     exp_tab: pd.DataFrame,
+    raw_counts: pd.DataFrame,
     score_test: ScoreTest
 ):
     results = []
@@ -75,7 +76,8 @@ def fit_model(
         warnings.simplefilter("ignore", RuntimeWarning)
         for i, gene in enumerate(tqdm(exp_tab.columns)):
             y = exp_tab.iloc[:, i].to_numpy()
-            model.y = y
+            rawy = raw_counts.iloc[:,i].to_numpy()
+            model.sety(y, rawy)
             t0 = time()
 
             res = model.optimize()
@@ -135,7 +137,7 @@ def kspace_walk(kernel_space: dict, X: np.ndarray):
             yield factory(kern, X, lengthscales), kern
 
 def dyn_de(
-    X: pd.DataFrame, exp_tab: pd.DataFrame, kernel_space=None, null_model="const"
+    X: pd.DataFrame, exp_tab: pd.DataFrame, raw_counts: pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const"
 ):
     if kernel_space == None:
         kernel_space = {"SE": [5.0, 25.0, 50.0]}
@@ -148,10 +150,12 @@ def dyn_de(
     elif null_model == 'null':
         stest_class = GaussianNullScoreTest
 
+    stest_class = NegativeBinomialScoreTest
+
     logging.info("Fitting gene models")
     n_models = 0
     for model, mname in kspace_walk(kernel_space, X.to_numpy()):
-        res = fit_model(model, exp_tab, stest_class(model))
+        res = fit_model(model, exp_tab, raw_counts, stest_class(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy(), model))
         res["model"] = mname
         results.append(res)
         n_models += 1
@@ -169,7 +173,7 @@ def dyn_de(
     return results
 
 
-def run(X, exp_tab, kernel_space=None, null_model="const"):
+def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const") -> pd.DataFrame:
     """ Perform SpatialDE test
 
     X : matrix of spatial coordinates times observations
@@ -187,13 +191,13 @@ def run(X, exp_tab, kernel_space=None, null_model="const"):
         }
 
     logging.info("Performing DE test")
-    results = dyn_de(X, exp_tab, kernel_space, null_model)
+    results = dyn_de(X, exp_tab, raw_counts, kernel_space, null_model)
 
     results = results.loc[results.groupby(["model", "g"])["max_ll"].idxmax()]
     results = results.loc[results.groupby("g")["BIC"].idxmin()]
     results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
-    return results
+    return results.reset_index(drop=True)
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     """ Compare model fits with different models.
