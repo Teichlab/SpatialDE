@@ -4,7 +4,7 @@ import sys
 import logging
 from time import time
 import warnings
-from typing import Optional
+from typing import Optional, Dict, Tuple
 
 import numpy as np
 from scipy import stats
@@ -64,48 +64,43 @@ def inducers_grid(X, ninducers):
     xx, xy = np.meshgrid(xvals, yvals)
     return np.hstack((xx.reshape((xx.size, 1)), xy.reshape((xy.size, 1))))
 
-
 def fit_model(
     model: Model,
     exp_tab: pd.DataFrame,
-    raw_counts: pd.DataFrame,
-    score_test: ScoreTest
+    raw_counts: pd.DataFrame
 ):
     results = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        for i, gene in enumerate(tqdm(exp_tab.columns)):
-            y = exp_tab.iloc[:, i].to_numpy()
-            rawy = raw_counts.iloc[:,i].to_numpy()
-            model.sety(y, rawy)
-            t0 = time()
+        with model:
+            for i, gene in enumerate(tqdm(exp_tab.columns)):
+                y = exp_tab.iloc[:, i].to_numpy()
+                rawy = raw_counts.iloc[:,i].to_numpy()
+                model.sety(y, rawy)
+                t0 = time()
 
-            res = model.optimize()
-            t = time() - t0
-            res = {
-                "g": gene,
-                "max_ll": model.log_marginal_likelihood,
-                "max_delta": model.delta,
-                "max_mu_hat": model.mu,
-                "max_s2_t_hat": model.sigma_s2,
-                "max_s2_e_hat": model.sigma_n2,
-                "time": t,
-                "n": model.n,
-                "FSV": model.FSV,
-                "s2_FSV": model.s2_FSV,
-                "s2_logdelta": model.s2_logdelta,
-                "converged": res.success,
-                "M": model.n_parameters,
-            }
-            for (k, v) in vars(model.kernel).items():
-                if k not in res:
-                    res[k] = v
-                stest = score_test()
-                res["pval"] = stest.pval
-                res["kappa"] = stest.kappa
-                res["U_tilde"] = stest.U_tilde
-                res["nu"] = stest.nu
-            results.append(res)
+                res = model.optimize()
+                t = time() - t0
+                res = {
+                    "g": gene,
+                    "max_ll": model.log_marginal_likelihood,
+                    "max_delta": model.delta,
+                    "max_mu_hat": model.mu,
+                    "max_s2_t_hat": model.sigma_s2,
+                    "max_s2_e_hat": model.sigma_n2,
+                    "time": t,
+                    "n": model.n,
+                    "FSV": model.FSV,
+                    "s2_FSV": model.s2_FSV,
+                    "s2_logdelta": model.s2_logdelta,
+                    "converged": res.success,
+                    "M": model.n_parameters,
+                }
+                for (k, v) in vars(model.kernel).items():
+                    if k not in res:
+                        res[k] = v
+
+                results.append(res)
     return pd.DataFrame(results)
 
 
@@ -136,42 +131,32 @@ def kspace_walk(kernel_space: dict, X: np.ndarray):
         except TypeError:
             yield factory(kern, X, lengthscales), kern
 
-def dyn_de(
-    X: pd.DataFrame, exp_tab: pd.DataFrame, raw_counts: pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const"
-):
-    if kernel_space == None:
-        kernel_space = {"SE": [5.0, 25.0, 50.0]}
-
-    results = []
-
-    stest_class = lambda x: None
-    if null_model == 'const':
-        stest_class = GaussianConstantScoreTest
-    elif null_model == 'null':
-        stest_class = GaussianNullScoreTest
-
-    stest_class = NegativeBinomialScoreTest
-
-    logging.info("Fitting gene models")
-    n_models = 0
-    for model, mname in kspace_walk(kernel_space, X.to_numpy()):
-        res = fit_model(model, exp_tab, raw_counts, stest_class(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy(), model))
-        res["model"] = mname
-        results.append(res)
-        n_models += 1
-
-    n_genes = exp_tab.shape[1]
-    logging.info("Finished fitting {} models to {} genes".format(n_models, n_genes))
-
-    results = pd.concat(results, sort=True).reset_index(drop=True)
-    sizes = results.groupby(["model", "g"]).size().groupby("model").unique()
-    results = results.set_index("model")
-    results.loc[sizes > 1, "M"] += 1
-    results = results.reset_index()
-    results["BIC"] = -2 * results["max_ll"] + results["M"] * np.log(results["n"])
-
-    return results
-
+def score_test(results: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, tests: Dict[Tuple[str, float], ScoreTest], testskey: str):
+    with tqdm(total=results.shape[0]) as pbar:
+        def test(df):
+            results = []
+            with tests[df.name] as test:
+                for gene in df.g:
+                    t0 = time()
+                    test.model.sety(exp_tab[gene], raw_counts[gene])
+                    stest = test()
+                    t = time() - t0
+                    res = {
+                            "g": gene,
+                            "pval": stest.pval,
+                            "kappa": stest.kappa,
+                            "U_tilde": stest.U_tilde,
+                            "nu": stest.nu,
+                            "test_time": t
+                        }
+                    results.append(res)
+                    pbar.update()
+            return pd.DataFrame(results)
+        testresults = results.groupby(testskey, sort=False).apply(test)
+        results = pd.concat((results.set_index('g'), testresults.set_index('g')), axis=1)
+        results.time += results.test_time
+        results.index.name = 'g' # FIXME: https://github.com/pandas-dev/pandas/issues/21629
+        return results.drop(columns='test_time').reset_index()
 
 def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const") -> pd.DataFrame:
     """ Perform SpatialDE test
@@ -191,13 +176,45 @@ def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_s
         }
 
     logging.info("Performing DE test")
-    results = dyn_de(X, exp_tab, raw_counts, kernel_space, null_model)
+    results = []
 
-    results = results.loc[results.groupby(["model", "g"])["max_ll"].idxmax()]
-    results = results.loc[results.groupby("g")["BIC"].idxmin()]
+    stest_class = lambda x: None
+    if null_model == 'const':
+        stest_class = GaussianConstantScoreTest
+    elif null_model == 'null':
+        stest_class = GaussianNullScoreTest
+
+    stest_class = NegativeBinomialScoreTest
+
+    logging.info("Fitting gene models")
+    n_models = 0
+    stests = {}
+    for model, mname in kspace_walk(kernel_space, X.to_numpy()):
+        res = fit_model(model, exp_tab, raw_counts)
+        stests[model] = stest_class(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy(), model)
+        res["model"] = mname
+        res["_model"] = model
+        results.append(res)
+        n_models += 1
+
+    n_genes = exp_tab.shape[1]
+    logging.info("Finished fitting {} models to {} genes".format(n_models, n_genes))
+
+    results = pd.concat(results, sort=True).reset_index(drop=True)
+    sizes = results.groupby(["model", "g"], sort=False).size().groupby("model", sort=False).unique()
+    results = results.set_index("model")
+    results.loc[sizes > 1, "M"] += 1
+    results = results.reset_index()
+    results["BIC"] = -2 * results["max_ll"] + results["M"] * np.log(results["n"])
+
+    results = results.loc[results.groupby(["model", "g"], sort=False)["max_ll"].idxmax()]
+    results = results.loc[results.groupby("g", sort=False)["BIC"].idxmin()]
+
+    logging.info("Performing score test")
+    results = score_test(results, exp_tab, raw_counts, stests, "_model")
     results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
-    return results.reset_index(drop=True)
+    return results.drop(columns="_model").reset_index(drop=True)
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     """ Compare model fits with different models.

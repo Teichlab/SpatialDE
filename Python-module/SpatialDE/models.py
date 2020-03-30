@@ -15,13 +15,20 @@ class Model(metaclass=ABCMeta):
         self.X = X
         self.n = X.shape[0]
         self.kernel = kernel
-        self.K = self.kernel.K(self.X)
 
+        self._K = None
         self._y = None
         self._rawy = None
 
     def _reset(self):
         pass
+
+    @property
+    def K(self):
+        if self._K is not None:
+            return self._K
+        else:
+            return self.kernel.K(self.X)
 
     @property
     def n_parameters(self) -> float:
@@ -109,19 +116,32 @@ class Model(metaclass=ABCMeta):
         if self.y.shape[0] != self.n:
             raise RuntimeError("different numbers of observations in y and X")
 
+    def __enter__(self):
+        self._K = self.K
+
+    def __exit__(self, *args):
+        self._K = None
+
 
 class GPModel(Model):
     def __init__(self, X: np.ndarray, kernel: Kernel):
         super().__init__(X, kernel)
 
-        K = kernel.K(X)
+        self._y = None
+        self._logdelta = 0
+        self._reset()
+
+    def __enter__(self):
+        super().__enter__()
+        self._reset()
         # Gower normalization factor for covariance matric K
         # Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
         self.gower = (np.trace(self.K) - np.sum(np.mean(self.K, axis=0))) / (self.n - 1)
 
-        self._y = None
-        self._logdelta = 0
-        self._reset()
+        return self
+
+    def __exit__(self, *args):
+        super().__exit__(*args)
 
     def _reset(self):
         self._s2_FSV = None
@@ -253,12 +273,15 @@ class GPModel(Model):
 class SGPR(GPModel):
     def __init__(self, X: np.ndarray, Z: np.ndarray, kern: Kernel):
         super().__init__(X, kernel=kern)
+        self.Z = Z
 
-        K_uu = kern.K(Z)
-        K_uf = kern.K(Z, X)
-        K_ff = kern.K_diag(X)
+    def __enter__(self):
+        super().__enter__()
+        K_uu = self.kernel.K(self.Z)
+        K_uf = self.kernel.K(self.Z, self.X)
+        K_ff = self.kernel.K_diag(self.X)
 
-        L = np.linalg.cholesky(K_uu + 1e-6 * np.eye(Z.shape[0]))
+        L = np.linalg.cholesky(K_uu + 1e-6 * np.eye(self.Z.shape[0]))
         LK_uf = scipy.linalg.solve_triangular(L, K_uf, lower=True)
         A = LK_uf @ LK_uf.T
 
@@ -267,6 +290,16 @@ class SGPR(GPModel):
         self._B1 = np.sum(self._B, axis=-1)
         self._By = None
         self._traceterm = np.sum(K_ff) - np.sum(LK_uf ** 2)
+
+        return self
+
+    def __exit__(self, *args):
+        super().__exit(*args)
+        self._Lambda = None
+        self._B = None
+        self._B1 = None
+        self._By = None
+        self._traceterm = None
 
     @property
     def n_parameters(self) -> float:
@@ -306,7 +339,8 @@ class SGPR(GPModel):
         return self._residual_quadratic() / self.n
 
     def _ychanged(self):
-        self._By = np.dot(self._B, self.y)
+        if self._B is not None:
+            self._By = np.dot(self._B, self.y)
 
     def _logdeltachanged(self):
         self._dL = self.delta + self._Lambda
@@ -315,9 +349,21 @@ class SGPR(GPModel):
 class GPR(GPModel):
     def __init__(self, X: np.ndarray, kern: Kernel):
         super().__init__(X, kernel=kern)
-        K = kern.K(X)
+
+    def __enter__(self):
+        super().__enter__()
+
+        K = self.kernel.K(self.X)
         self._Lambda, self._U = np.linalg.eigh(K)
         self._U1 = np.sum(self._U, axis=0)
+        self._Uy = None
+
+        return self
+
+    def __exit__(self, *args):
+        super().__exit__(*args)
+        self._Lambda = self._U = None
+        self._U1 = None
         self._Uy = None
 
     @property
@@ -347,7 +393,8 @@ class GPR(GPModel):
         return self.sigma_s2 * self.delta
 
     def _ychanged(self):
-        self._Uy = np.dot(self._U.T, self.y)
+        if self._U is not None:
+            self._Uy = np.dot(self._U.T, self.y)
 
     def _logdeltachanged(self):
         self._dL = self.delta + self._Lambda

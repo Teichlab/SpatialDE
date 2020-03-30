@@ -18,6 +18,21 @@ class ScoreTestResults:
 class ScoreTest(metaclass=ABCMeta):
     def __init__(self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Model):
         self.model = model
+        self._K_ = None
+
+    @property
+    def _K(self):
+        if self._K_ is None:
+            return self.model.K
+        else:
+            return self._K_
+
+    def __enter__(self):
+        self._K_ = self._K
+        return self
+
+    def __exit__(self, *args):
+        self._K_ = None
 
     @abstractmethod
     def __call__(self) -> ScoreTestResults:
@@ -42,7 +57,7 @@ class GaussianConstantScoreTest(GaussianScoreTest):
         null_variance = self.model.y.var(ddof=0)
 
         scaling = 1 / (2 * null_variance ** 2)
-        PK = self.model.K - np.mean(self.model.K, axis=0, keepdims=True)
+        PK = self._K - np.mean(self._K, axis=0, keepdims=True)
 
         I_tau_tau = scaling * np.sum(PK ** 2)
         I_tau_theta = scaling * np.trace(PK)  # P is idempotent
@@ -52,7 +67,7 @@ class GaussianConstantScoreTest(GaussianScoreTest):
         e_tilde = 1 / (2 * null_variance) * np.trace(PK)
 
         res = self.model.y - null_prediction
-        stat = scaling * np.sum(res * np.dot(self.model.K, res))
+        stat = scaling * np.sum(res * np.dot(self._K, res))
         return self._calc_test(stat, e_tilde, I_tau_tau_tilde)
 
 
@@ -61,14 +76,14 @@ class GaussianNullScoreTest(GaussianScoreTest):
         null_variance = np.sum(np.square(self.model.y)) / self.model.n
 
         scaling = 1 / (2 * null - null_variance ** 2)
-        I_tau_tau = scaling * np.sum(np.square(self.model.K))
-        I_tau_theta = scaling * np.trace(self.model.K)
+        I_tau_tau = scaling * np.sum(np.square(self._K))
+        I_tau_theta = scaling * np.trace(self._K)
         I_theta_theta = scaling * self.model.n
         I_tau_tau_tilde = I_tau_tau - I_tau_theta ** 2 / I_theta_theta
 
-        e_tilde = np.trace(self.model.K) / (2 * null_variance)
+        e_tilde = np.trace(self._K) / (2 * null_variance)
 
-        stat = np.sum(self.model.y * np.dot(self.model.K, self.model.y))
+        stat = np.sum(self.model.y * np.dot(self._K, self.model.y))
         return self._calc_test(stat, e_tilde, I_tau_tau_tilde)
 
 
@@ -81,7 +96,7 @@ class NegativeBinomialScoreTest(ScoreTest):
 
     def __call__(self):
         rawy = self.model.rawy[self.yidx]
-        K = self.model.K[np.ix_(self.yidx, self.yidx)]
+        K = self._K[np.ix_(self.yidx, self.yidx)]
         y = rawy / self.sizefactors
         alpha = self._moments_dispersion_estimate(y)
         if alpha < 0:
