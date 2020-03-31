@@ -11,12 +11,26 @@ from scipy import stats
 from scipy.special import logsumexp
 import pandas as pd
 
+import tensorflow as tf
+import tensorflow_probability as tfp
+
 from tqdm.auto import tqdm
 
 from .kernels import SquaredExponential, Cosine, Linear
 from .models import Model, Constant, Null, model_factory
-from .util import bh_adjust
+from .util import bh_adjust, Kernel, GP, SGPIPM, GPControl
 from .score_test import ScoreTest, GaussianConstantScoreTest, GaussianNullScoreTest, NegativeBinomialScoreTest
+from .gpflow_helpers import *
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        print(e)
 
 
 def get_l_limits(X):
@@ -157,6 +171,67 @@ def score_test(results: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFr
         results.time += results.test_time
         results.index.name = 'g' # FIXME: https://github.com/pandas-dev/pandas/issues/21629
         return results.drop(columns='test_time').reset_index()
+
+def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const"):
+    if control.gp is None:
+        if X.shape[0] < 750:
+            control.gp = GP.GPR
+        else:
+            control.gp = GP.SGPR
+
+    results = DataSetResults()
+    X = tf.constant(X.to_numpy(), dtype=gpflow.config.default_float())
+    colnames = exp_tab.columns.to_numpy()
+    t = tqdm(colnames)
+    opt = gpflow.optimizers.Scipy()
+
+    logging.info("Fitting gene models")
+    if control.gp == GP.GPR:
+        for g, gene in enumerate(t):
+            t.set_description(gene, refresh=False)
+            model = GPR(
+                X,
+                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis], dtype=gpflow.config.default_float()),
+                control.ncomponents,
+                control.ard,
+            )
+            results[gene] = GeneGP(model, opt.minimize, method="bfgs")
+    elif control.gp == GP.SGPR:
+        ninducers = (
+            np.ceil(np.sqrt(X.shape[0])).astype(np.int32)
+            if control.ninducers is None
+            else control.ninducers
+        )
+        if control.ipm == SGPIPM.free or control.ipm == SGPIPM.random:
+            inducers = X.iloc[rng.integers(0, X.shape[0], ninducers), :].to_numpy()
+        elif control.ipm == SGPIPM.grid:
+            rngmin = tf.reduce_min(X, axis=0)
+            rngmax = tf.reduce_max(X, axis=0)
+            xvals = tf.linspace(rngmin[0], rngmax[0], int(np.ceil(np.sqrt(ninducers))))
+            yvals = tf.linspace(rngmin[1], rngmax[1], int(np.ceil(np.sqrt(ninducers))))
+            xx, xy = tf.meshgrid(xvals, yvals)
+            inducers = tf.stack((tf.reshape(xx, (-1,)), tf.reshape(xy, (-1,))), axis=1)
+            inducers = gpflow.inducing_variables.InducingPoints(inducers)
+        if control.ipm != SGPIPM.free:
+            gpflow.utilities.set_trainable(inducers, False)
+
+        method = "BFGS"
+        if control.ipm == SGPIPM.free and ninducers > 1e3:
+            method = "L-BFGS-B"
+
+        for g, gene in enumerate(t):
+            t.set_description(gene, refresh=False)
+            model = SGPR(
+                X,
+                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis], dtype=gpflow.config.default_float()),
+                inducing_variable=inducers,
+                n_kernel_components=control.ncomponents,
+                ard=control.ard,
+            )
+            results[gene] = GeneGP(model, opt.minimize, method=method)
+
+    logging.info("Finished fitting models to %i genes" % len(colnames))
+    return results.to_df()
 
 def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const") -> pd.DataFrame:
     """ Perform SpatialDE test

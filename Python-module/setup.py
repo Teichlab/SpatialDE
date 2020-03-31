@@ -7,7 +7,7 @@ setup(
     name='SpatialDE',
     version='1.1.3',
     description='Spatial and Temporal DE test',
-    long_description=(HERE.parent / 'README.rst').read_text(),
+    long_description=(HERE / 'README.rst').read_text(),
     url='https://github.com/Teichlab/SpatialDE',
     packages=find_packages(),
     include_package_data=True,
