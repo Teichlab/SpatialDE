@@ -172,7 +172,7 @@ def score_test(results: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFr
         results.index.name = 'g' # FIXME: https://github.com/pandas-dev/pandas/issues/21629
         return results.drop(columns='test_time').reset_index()
 
-def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const"):
+def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, control:Optional[GPControl]=GPControl(), rng:np.random.Generator=np.random.default_rng()):
     if control.gp is None:
         if X.shape[0] < 750:
             control.gp = GP.GPR
