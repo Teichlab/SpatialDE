@@ -1,10 +1,11 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 from scipy.stats import chi2
 
-from .models import Model
+from .models import TestableModel
 
 
 @dataclass(frozen=True)
@@ -14,15 +15,29 @@ class ScoreTestResults:
     U_tilde: float
     pval: float
 
+    def to_dict(self):
+        return {
+            "pval": self.pval,
+            "kappa": self.kappa,
+            "U_tilde": self.U_tilde,
+            "nu": self.nu,
+        }
+
 
 class ScoreTest(metaclass=ABCMeta):
-    def __init__(self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Model):
+    def __init__(
+        self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Optional[TestableModel] = None
+    ):
         self.model = model
         self._K_ = None
 
     @property
     def _K(self):
         if self._K_ is None:
+            if self.model is None:
+                raise RuntimeError(
+                    "This ScoreTest does not have a model. Please assign a TestableModel to the model attribute of this ScoreTest object."
+                )
             return self.model.K
         else:
             return self._K_
@@ -88,22 +103,29 @@ class GaussianNullScoreTest(GaussianScoreTest):
 
 
 class NegativeBinomialScoreTest(ScoreTest):
-    def __init__(self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Model):
+    def __init__(
+        self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Optional[TestableModel] = None
+    ):
         super().__init__(X, Y, rawY, model)
         self.sizefactors = np.sum(rawY, axis=1) / 1e3
-        self.yidx = self.sizefactors.nonzero()[0]
-        self.sizefactors = self.sizefactors[self.yidx]
+        yidx = self.sizefactors.nonzero()[0]
+        self.yidx = None
+        if yidx.shape[0] != self.sizefactors.shape[0]:
+            self.yidx = yidx
+            self.sizefactors = np.take(self.sizefactors, self.yidx)
 
     def __call__(self):
-        rawy = self.model.rawy[self.yidx]
-        K = self._K[np.ix_(self.yidx, self.yidx)]
+        rawy = self.model.rawy
+        K = self._K
+        if self.yidx is not None:
+            rawy = np.take(self.model.rawy, self.yidx)
+            K = np.take(K, np.ravel_multi_index(np.ix_(self.yidx, self.yidx), K.shape))
         y = rawy / self.sizefactors
         alpha = self._moments_dispersion_estimate(y)
         if alpha < 0:
             alpha = 0  # we do not allow underdispersion. alpha=0 reduces to a Poisson null model
 
-        mu = y.mean() * self.sizefactors
-        delta = 1 / mu
+        mu = np.mean(y) * self.sizefactors
         W = mu / (1 + alpha * mu)
 
         stat = 0.5 * np.sum((rawy / mu - 1) * W * np.dot(K, W * (rawy / mu - 1)))
@@ -123,7 +145,7 @@ class NegativeBinomialScoreTest(ScoreTest):
         """
         if y is None:
             y = self.model.rawy / self.sizefactors
-        v = y.var()
-        m = y.mean()
+        v = np.var(y)
+        m = np.mean(y)
         s = np.mean(1 / self.sizefactors)
         return (v - s * m) / np.square(m)

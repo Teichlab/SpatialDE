@@ -19,15 +19,20 @@ from tqdm.auto import tqdm
 from .kernels import SquaredExponential, Cosine, Linear
 from .models import Model, Constant, Null, model_factory
 from .util import bh_adjust, Kernel, GP, SGPIPM, GPControl
-from .score_test import ScoreTest, GaussianConstantScoreTest, GaussianNullScoreTest, NegativeBinomialScoreTest
+from .score_test import (
+    ScoreTest,
+    GaussianConstantScoreTest,
+    GaussianNullScoreTest,
+    NegativeBinomialScoreTest,
+)
 from .gpflow_helpers import *
 
-gpus = tf.config.experimental.list_physical_devices('GPU')
+gpus = tf.config.experimental.list_physical_devices("GPU")
 if gpus:
     try:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        logical_gpus = tf.config.experimental.list_logical_devices("GPU")
         print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
     except RuntimeError as e:
         print(e)
@@ -61,8 +66,7 @@ def get_mll_results(results, null_model="const"):
     null_lls = results.query('model == "{}"'.format(null_model))[["g", "max_ll"]]
     model_results = results.query('model != "{}"'.format(null_model))
     model_results = model_results[
-        model_results.groupby(["g", "model"])["max_ll"].transform(max)
-        == model_results["max_ll"]
+        model_results.groupby(["g", "model"])["max_ll"].transform(max) == model_results["max_ll"]
     ]
     mll_results = model_results.merge(null_lls, on="g", suffixes=("", "_null"))
     mll_results["LLR"] = mll_results["max_ll"] - mll_results["max_ll_null"]
@@ -78,25 +82,22 @@ def inducers_grid(X, ninducers):
     xx, xy = np.meshgrid(xvals, yvals)
     return np.hstack((xx.reshape((xx.size, 1)), xy.reshape((xy.size, 1))))
 
-def fit_model(
-    model: Model,
-    exp_tab: pd.DataFrame,
-    raw_counts: pd.DataFrame
-):
+
+def fit_model(model: Model, exp_tab: pd.DataFrame, raw_counts: pd.DataFrame):
     results = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         with model:
             for i, gene in enumerate(tqdm(exp_tab.columns)):
                 y = exp_tab.iloc[:, i].to_numpy()
-                rawy = raw_counts.iloc[:,i].to_numpy()
+                rawy = raw_counts.iloc[:, i].to_numpy()
                 model.sety(y, rawy)
                 t0 = time()
 
                 res = model.optimize()
                 t = time() - t0
                 res = {
-                    "g": gene,
+                    "gene": gene,
                     "max_ll": model.log_marginal_likelihood,
                     "max_delta": model.delta,
                     "max_mu_hat": model.mu,
@@ -145,34 +146,71 @@ def kspace_walk(kernel_space: dict, X: np.ndarray):
         except TypeError:
             yield factory(kern, X, lengthscales), kern
 
-def score_test(results: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, tests: Dict[Tuple[str, float], ScoreTest], testskey: str):
+
+def score_test_fast_models(
+    results: pd.DataFrame,
+    exp_tab: pd.DataFrame,
+    raw_counts: pd.DataFrame,
+    tests: Dict[Tuple[str, float], ScoreTest],
+    testskey: str,
+):
     with tqdm(total=results.shape[0]) as pbar:
+
         def test(df):
             results = []
             with tests[df.name] as test:
-                for gene in df.g:
+                for gene in df.gene:
                     t0 = time()
                     test.model.sety(exp_tab[gene], raw_counts[gene])
                     stest = test()
                     t = time() - t0
                     res = {
-                            "g": gene,
-                            "pval": stest.pval,
-                            "kappa": stest.kappa,
-                            "U_tilde": stest.U_tilde,
-                            "nu": stest.nu,
-                            "test_time": t
-                        }
+                        "gene": gene,
+                        "test_time": t,
+                    }
+                    res.update(stest.to_dict())
                     results.append(res)
                     pbar.update()
             return pd.DataFrame(results)
-        testresults = results.groupby(testskey, sort=False).apply(test)
-        results = pd.concat((results.set_index('g'), testresults.set_index('g')), axis=1)
-        results.time += results.test_time
-        results.index.name = 'g' # FIXME: https://github.com/pandas-dev/pandas/issues/21629
-        return results.drop(columns='test_time').reset_index()
 
-def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, control:Optional[GPControl]=GPControl(), rng:np.random.Generator=np.random.default_rng()):
+        testresults = results.groupby(testskey, sort=False).apply(test)
+        results = pd.concat((results.set_index("gene"), testresults.set_index("gene")), axis=1)
+        results.time += results.test_time
+        results.index.name = "gene"  # FIXME: https://github.com/pandas-dev/pandas/issues/21629
+        return results.drop(columns="test_time").reset_index()
+
+
+def score_test_detailed_models(results: pd.DataFrame, test: ScoreTest, modelkey):
+    testresults = []
+
+    with tqdm(total=results.shape[0]) as pbar:
+        for row in results.itertuples():
+            test.model = getattr(row, modelkey)
+            with test:
+                t0 = time()
+                stest = test()
+                t = time() - t0
+                res = {
+                    "gene": row.gene,
+                    "test_time": t,
+                }
+                res.update(stest.to_dict())
+                testresults.append(res)
+                pbar.update()
+        testresults = pd.DataFrame(testresults)
+        results = pd.concat((results.set_index("gene"), testresults.set_index("gene")), axis=1)
+        results.time += results.test_time
+        results.index.name = "gene"  # FIXME: https://github.com/pandas-dev/pandas/issues/21629
+        return results.drop(columns="test_time").reset_index()
+
+
+def run_gpflow(
+    X: pd.DataFrame,
+    exp_tab: pd.DataFrame,
+    raw_counts: pd.DataFrame,
+    control: Optional[GPControl] = GPControl(),
+    rng: np.random.Generator = np.random.default_rng(),
+):
     if control.gp is None:
         if X.shape[0] < 750:
             control.gp = GP.GPR
@@ -191,9 +229,13 @@ def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, control:Optional[GPControl
             t.set_description(gene, refresh=False)
             model = GPR(
                 X,
-                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis], dtype=gpflow.config.default_float()),
-                control.ncomponents,
-                control.ard,
+                Y=tf.constant(
+                    exp_tab.iloc[:, g].to_numpy()[:, np.newaxis],
+                    dtype=gpflow.config.default_float(),
+                ),
+                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]),
+                n_kernel_components=control.ncomponents,
+                ard=control.ard,
             )
             results[gene] = GeneGP(model, opt.minimize, method="bfgs")
     elif control.gp == GP.SGPR:
@@ -223,7 +265,11 @@ def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, control:Optional[GPControl
             t.set_description(gene, refresh=False)
             model = SGPR(
                 X,
-                tf.constant(exp_tab.iloc[:, g].to_numpy()[:, np.newaxis], dtype=gpflow.config.default_float()),
+                Y=tf.constant(
+                    exp_tab.iloc[:, g].to_numpy()[:, np.newaxis],
+                    dtype=gpflow.config.default_float(),
+                ),
+                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]),
                 inducing_variable=inducers,
                 n_kernel_components=control.ncomponents,
                 ard=control.ard,
@@ -231,13 +277,21 @@ def run_gpflow(X: pd.DataFrame, exp_tab:pd.DataFrame, control:Optional[GPControl
             results[gene] = GeneGP(model, opt.minimize, method=method)
 
     logging.info("Finished fitting models to %i genes" % len(colnames))
-    return results.to_df()
+    return results
 
-def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_space:Optional[dict]=None, null_model:str="const") -> pd.DataFrame:
+
+def run(
+    X: pd.DataFrame,
+    exp_tab: pd.DataFrame,
+    raw_counts: pd.DataFrame,
+    kernel_space: Optional[dict] = None,
+    null_model: str = "const",
+) -> pd.DataFrame:
     """ Perform SpatialDE test
 
     X : matrix of spatial coordinates times observations
     exp_tab : Expression table, assumed appropriatealy normalised.
+    raw_counts : Unnormalized expression table
 
     The grid of covariance matrices to search over for the alternative
     model can be specifiec using the kernel_space parameter.
@@ -254,9 +308,9 @@ def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_s
     results = []
 
     stest_class = lambda x: None
-    if null_model == 'const':
+    if null_model == "const":
         stest_class = GaussianConstantScoreTest
-    elif null_model == 'null':
+    elif null_model == "null":
         stest_class = GaussianNullScoreTest
 
     stest_class = NegativeBinomialScoreTest
@@ -276,20 +330,49 @@ def run(X: pd.DataFrame, exp_tab:pd.DataFrame, raw_counts:pd.DataFrame, kernel_s
     logging.info("Finished fitting {} models to {} genes".format(n_models, n_genes))
 
     results = pd.concat(results, sort=True).reset_index(drop=True)
-    sizes = results.groupby(["model", "g"], sort=False).size().groupby("model", sort=False).unique()
+    sizes = results.groupby(["model", "gene"], sort=False).size().groupby("model", sort=False).unique()
     results = results.set_index("model")
     results.loc[sizes > 1, "M"] += 1
     results = results.reset_index()
     results["BIC"] = -2 * results["max_ll"] + results["M"] * np.log(results["n"])
 
-    results = results.loc[results.groupby(["model", "g"], sort=False)["max_ll"].idxmax()]
-    results = results.loc[results.groupby("g", sort=False)["BIC"].idxmin()]
+    results = results.loc[results.groupby(["model", "gene"], sort=False)["max_ll"].idxmax()]
+    results = results.loc[results.groupby("gene", sort=False)["BIC"].idxmin()]
 
     logging.info("Performing score test")
-    results = score_test(results, exp_tab, raw_counts, stests, "_model")
+    results = score_test_fast_models(results, exp_tab, raw_counts, stests, "_model")
     results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
     return results.drop(columns="_model").reset_index(drop=True)
+
+
+def run_detailed(
+    X: pd.DataFrame,
+    exp_tab: pd.DataFrame,
+    raw_counts: pd.DataFrame,
+    control: Optional[GPControl] = GPControl(),
+    rng: np.random.Generator = np.random.default_rng(),
+):
+    logging.info("Fitting gene models")
+    res = run_gpflow(X, exp_tab, raw_counts, control, rng)
+    logging.info("Finished fitting models to {} genes".format(X.shape[0]))
+
+    results = res.to_df(modelcol="model")
+    stest = NegativeBinomialScoreTest(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy())
+    results = score_test_detailed_models(results, stest, "model")
+    results["p.adj"] = bh_adjust(results["pval"].to_numpy())
+
+    return results.reset_index(drop=True)
+
+
+def fit_patterns(
+    X: pd.DataFrame,
+    exp_tab: pd.DataFrame,
+    control: Optional[GPControl] = GPControl(),
+    rng: np.random.Generator = np.random.default_rng(),
+):
+    return run_gpflow(X, exp_tab, control, rng)
+
 
 def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
     """ Compare model fits with different models.
@@ -320,18 +403,13 @@ def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
         new_and_old_results.groupby(["g", "model"])["BIC"].transform(min)
         == new_and_old_results["BIC"]
     )
-    log_p_data_Hi = -new_and_old_results[mask].pivot_table(
-        values="BIC", index="g", columns="model"
-    )
+    log_p_data_Hi = -new_and_old_results[mask].pivot_table(values="BIC", index="g", columns="model")
     log_Z = logsumexp(log_p_data_Hi, 1)
     log_p_Hi_data = (log_p_data_Hi.T - log_Z).T
     p_Hi_data = np.exp(log_p_Hi_data).add_suffix("_prob")
 
     # Select most likely model
-    mask = (
-        new_and_old_results.groupby("g")["BIC"].transform(min)
-        == new_and_old_results["BIC"]
-    )
+    mask = new_and_old_results.groupby("g")["BIC"].transform(min) == new_and_old_results["BIC"]
     ms_results = new_and_old_results[mask]
 
     ms_results = ms_results.join(p_Hi_data, on="g")

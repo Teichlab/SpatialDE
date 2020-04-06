@@ -9,14 +9,25 @@ import pandas as pd
 import gpflow
 import tensorflow as tf
 
-from . import util
-from .util import SGPIPM, GP, GPControl, get_dtype
+from .util import SGPIPM, GP, GPControl, get_dtype, bh_adjust
 from .sm_kernel import *
+from .models import TestableModel
 
 
-class SMPlusLinearKernel(Sum):
+class Linear(gpflow.kernels.Linear):
+    def K_novar(self, X, X2=None):
+        if X2 is None:
+            return tf.matmul(X, X, transpose_b=True)
+        else:
+            return tf.tensordot(X, X2, [-1, -1])
+
+
+class SMPlusLinearKernel(gpflow.kernels.Sum):
     def __init__(self, sm_kernel):
-        super().__init__([sm_kernel, gpflow.kernels.Linear()])
+        super().__init__([sm_kernel, Linear()])
+
+    def K_novar(self, X, X2=None):
+        return self._reduce([k.K_novar(X, X2) for k in self.kernels])
 
     @property
     def spectral_mixture(self):
@@ -33,9 +44,7 @@ class SMPlusLinearKernel(Sum):
         Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
         """
         K = k(X)
-        gower = (tf.linalg.trace(K) - tf.reduce_sum(tf.reduce_mean(K, axis=0))) / (
-            K.shape[0] - 1
-        )
+        gower = (tf.linalg.trace(K) - tf.reduce_sum(tf.reduce_mean(K, axis=0))) / (K.shape[0] - 1)
         return k.variance * gower
 
     def scaled_variance(self, X):
@@ -43,18 +52,21 @@ class SMPlusLinearKernel(Sum):
         linvar = self._scaled_var(X, self.kernels[1])
         return tf.concat((smvars, tf.expand_dims(linvar, axis=0)), axis=0)
 
+
 class GeneGPModel(metaclass=ABCMeta):
     @abstractmethod
     def freeze(self):
         pass
 
+    @property
+    def rawy(self):
+        return self._rawy.numpy()
+
     @staticmethod
     def mixture_kernel(X, ncomponents=5, ard=True, minvar=1e-3):
         range = tf.reduce_min(tf.reduce_max(X, axis=0) - tf.reduce_min(X, axis=0))
         dist = tf.sqrt(gpflow.utilities.ops.square_distance(X, None))
-        dist = tf.linalg.set_diag(
-            dist, tf.fill((X.shape[0],), tf.cast(np.inf, dist.dtype))
-        )
+        dist = tf.linalg.set_diag(dist, tf.fill((X.shape[0],), tf.cast(np.inf, dist.dtype)))
         min_1nndist = tf.reduce_min(dist)
 
         minperiod = 2 * min_1nndist
@@ -67,51 +79,46 @@ class GeneGPModel(metaclass=ABCMeta):
 
         kernels = []
         for v in np.linspace(minvar, 1, ncomponents):
-            k = Spectral(variance=v, lengthscale=varinit, period=periodinit)
-            k.period.transform = gpflow.utilities.positive(lower=minperiod)
+            k = Spectral(variance=v, lengthscales=varinit, periods=periodinit)
+            k.lengthscales.transform = gpflow.utilities.positive(lower=0.1 * min_1nndist)
+            k.periods.transform = gpflow.utilities.positive(lower=minperiod)
             kernels.append(k)
         kern = SpectralMixture(kernels)
         return SMPlusLinearKernel(kern)
 
-    # this is a dirty hack to fix pickling of frozen models, see https://github.com/GPflow/GPflow/pull/1338
-    @classmethod
-    def _fix_frozen(cls, m):
-        try:
-            mvars = vars(m)
-            for name in list(vars(m).keys()):
-                var = mvars[name]
-                if isinstance(var, tf.Tensor):
-                    delattr(m, name)
-                    setattr(m, name, var)
-                elif isinstance(var, tf.Module):
-                    cls._fix_frozen(var)
-                elif isinstance(var, list):
-                    for v in var:
-                        cls._fix_frozen(var)
-                elif isinstance(var, dict):
-                    for v in var.values():
-                        cls._fix_frozen(v)
-        except TypeError:
-            pass
-        return m
 
 class GPR(gpflow.models.GPR, GeneGPModel):
-    def __init__(self, X, Y, n_kernel_components=5, ard=True, minvar=1e-3, dimnames=None):
+    def __init__(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        rawY: np.ndarray,
+        n_kernel_components: int = 5,
+        ard: bool = True,
+        minvar: float = 1e-3,
+    ):
         kern = self.mixture_kernel(X, n_kernel_components, ard, minvar)
-        super().__init__(
-            data=[X, Y], kernel=kern, mean_function=gpflow.mean_functions.Constant()
-        )
+        super().__init__(data=[X, Y], kernel=kern, mean_function=gpflow.mean_functions.Constant())
+        self._rawy = rawY
 
     def freeze(self):
         X = self.data[0]
         self.data[0] = None
         frozen = gpflow.utilities.freeze(self)
         frozen.data[0] = self.data[0] = X
-        return self._fix_frozen(frozen)
+        return frozen
+
 
 class SGPR(gpflow.models.SGPR, GeneGPModel):
     def __init__(
-        self, X, Y, inducing_variable, n_kernel_components=5, ard=True, minvar=1e-3, dimnames=None
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        rawY: np.ndarray,
+        inducing_variable: Union[np.ndarray, gpflow.inducing_variables.InducingPoints],
+        n_kernel_components: int = 5,
+        ard: bool = True,
+        minvar: float = 1e-3,
     ):
         kern = self.mixture_kernel(X, n_kernel_components, ard, minvar)
         super().__init__(
@@ -120,6 +127,8 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
             inducing_variable=inducing_variable,
             mean_function=gpflow.mean_functions.Constant(),
         )
+
+        self._rawy = rawY
 
     def freeze(self):
         X = self.data[0]
@@ -132,7 +141,8 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
         frozen.data[0] = self.data[0] = X
         if not trainable_inducers:
             frozen.inducing_variable.Z = Z
-        return self._fix_frozen(frozen)
+        return frozen
+
 
 @dataclass(frozen=True)
 class VarPart:
@@ -140,20 +150,15 @@ class VarPart:
     linear: tf.Tensor
     noise: tf.Tensor
 
+
 @dataclass(frozen=True)
 class Variance:
     scaled_variance: VarPart
     fraction_variance: VarPart
     var_fraction_variance: VarPart
 
-@dataclass(frozen=True)
-class ScoreTest:
-    kappa: util.float
-    nu: util.float
-    U_tilde: util.float
-    pval: util.float
 
-class GeneGP:
+class GeneGP(TestableModel):
     def __init__(self, model: GeneGPModel, minimize_fun, *args, **kwargs):
         self.model = model
 
@@ -166,33 +171,46 @@ class GeneGP:
         variancevars = set([v.experimental_ref() for v in self._variancevars])
         for v in self.model.parameters:
             if v.experimental_ref() in variancevars:
-                self._trainable_variance_idx.extend(
-                    [offset + int(i) for i in range(tf.size(v))]
-                )
+                self._trainable_variance_idx.extend([offset + int(i) for i in range(tf.size(v))])
                 offset += int(tf.size(v))
 
         self.__invHess = None
         self.model.likelihood.variance.assign(tf.math.reduce_variance(self.model.data[1]))
+
+        t0 = time()
         self._optimize(minimize_fun, *args, **kwargs)
         self._freeze()
+        t = time() - t0
 
-        self.score_test_results = self._score_test()
-
-    @property
-    def pval(self):
-        return self.score_test_results.pval
+        self._time = t
 
     @property
     def kernel(self):
         return self.model.kernel
+
+    @property
+    def K(self):
+        return self.model.kernel.K_novar(self.model.data[0])
+
+    @property
+    def y(self):
+        return tf.squeeze(self.model.data[1]).numpy()
+
+    @property
+    def rawy(self):
+        return tf.squeeze(self.model.rawy).numpy()
 
     def predict_mean(self, X=None):
         if X is None:
             X = self.model.data[0]
         return self.model.predict_f(X)[0]
 
-    def plot_power_spectrum(self):
-        pass
+    def plot_power_spectrum(self, xlim=None, ylim=None, **kwargs):
+        return self.model.kernel.spectral_mixture.plot_power_spectrum(xlim, ylim, **kwargs)
+
+    @property
+    def time(self):
+        return self._time
 
     @staticmethod
     def _concat_tensors(tens):
@@ -208,9 +226,7 @@ class GeneGP:
             with tf.GradientTape(persistent=True) as tape:
                 y = self.model.log_marginal_likelihood()
                 tape.watch(y)
-                grad = self._concat_tensors(
-                    tape.gradient(y, self.model.trainable_variables)
-                )
+                grad = self._concat_tensors(tape.gradient(y, self.model.trainable_variables))
                 grads = tf.split(
                     grad, tf.ones((tf.size(grad),), dtype=tf.int32)
                 )  # this is necessary to be able to get the gradient of each entry
@@ -233,9 +249,7 @@ class GeneGP:
     def _invHess(self, invhess):
         x, y = tf.meshgrid(self._trainable_variance_idx, self._trainable_variance_idx)
         invhess = tf.reshape(
-            tf.gather_nd(
-                invhess, tf.stack([tf.reshape(x, (-1,)), tf.reshape(y, (-1,))], axis=1)
-            ),
+            tf.gather_nd(invhess, tf.stack([tf.reshape(x, (-1,)), tf.reshape(y, (-1,))], axis=1)),
             (len(self._trainable_variance_idx), len(self._trainable_variance_idx)),
         )
         self.__invHess = invhess
@@ -270,9 +284,7 @@ class GeneGP:
             variance_fractions = variances / totalvar
 
         grads = t.jacobian(variance_fractions, self._variancevars)
-        grads = tf.concat(
-            [tf.expand_dims(g, -1) if g.ndim < 2 else g for g in grads], axis=1
-        )
+        grads = tf.concat([tf.expand_dims(g, -1) if g.ndim < 2 else g for g in grads], axis=1)
         errors = tf.reduce_sum((grads @ self._invHess) * grads, axis=1)
 
         variances = VarPart(variances[0:-2], variances[-2], variances[-1])
@@ -286,35 +298,6 @@ class GeneGP:
         self.model = self.model.freeze()
         self._frozen = True
 
-    def _score_test(self):
-        mu = tf.reduce_mean(self.model.data[1])
-        s2 = tf.math.reduce_variance(
-            self.model.data[1]
-        )  # Tensorflow calculates the biased MLE
-        scaling = 1 / (2 * s2 ** 2)
-
-        N = self.model.data[1].shape[0]
-        P = tf.eye(N, dtype=mu.dtype) - tf.fill((N, N), tf.cast(1 / N, mu.dtype))
-        K = self.model.kernel(self.model.data[0])
-        PK = K - tf.reduce_mean(K, axis=0, keepdims=True)
-        I_tau_tau = scaling * tf.reduce_sum(PK ** 2)
-        I_tau_theta = scaling * tf.linalg.trace(PK)  # P is idempotent
-        I_theta_theta = scaling * tf.linalg.trace(P)
-        I_tau_tau_tilde = I_tau_tau - I_tau_theta ** 2 / I_theta_theta
-
-        e_tilde = 1 / (2 * s2) * tf.linalg.trace(PK)
-        kappa = I_tau_tau / (2 * e_tilde)
-        nu = 2 * e_tilde ** 2 / I_tau_tau
-
-        res = self.model.data[1] - mu
-        stat = scaling * tf.squeeze(
-            tf.tensordot(res, tf.tensordot(K, res, axes=[1, 0]), axes=[0, 0])
-        )
-
-        chi2 = tfp.distributions.Chi2(nu)
-        pval = chi2.survival_function(stat / kappa)
-
-        return ScoreTest(kappa.numpy(), nu.numpy(), stat.numpy(), pval.numpy())
 
 class DataSetResults(dict):
     def __init__(self, *args, **kwargs):
@@ -325,26 +308,25 @@ class DataSetResults(dict):
             raise TypeError("value must be a GeneGP object")
         super().__setitem__(key, value)
 
-    def to_df(self):
+    def to_df(self, modelcol: str = "model"):
         df = defaultdict(lambda: [])
         for gene, res in self.items():
             df["gene"].append(gene)
-            df["pval"].append(res.pval)
             variances = res.variances
             df["FSV"].append(
                 (
-                    tf.reduce_sum(variances.fraction_variance.spectral_mixture)
-                    + variances.fraction_variance.linear
+                    1 - variances.fraction_variance.noise
                 ).numpy()
             )
-            df["s2_FSV"].append(variances.var_fraction_variance.noise)
+            df["s2_FSV"].append(variances.var_fraction_variance.noise.numpy())
 
             for i, k in enumerate(res.kernel.spectral_mixture.kernels):
-                df["sm_variance_%i" % i] = k.variance
-                df["sm_lengthscale_%i" % i] = k.lengthscale
-                df["sm_period_%i" % i] = k.period
-            df["linear_variance"] = res.kernel.linear.variance
-            df["model"] = res
+                df["sm_variance_%i" % i].append(k.variance.numpy())
+                df["sm_lengthscale_%i" % i].append(k.lengthscales.numpy())
+                df["sm_period_%i" % i].append(k.periods.numpy())
+            df["linear_variance"].append(res.kernel.linear.variance.numpy())
+            df["noise_variance"].append(res.model.likelihood.variance.numpy())
+            df["time"].append(res.time)
+            df[modelcol].append(res)
         df = pd.DataFrame(df)
-        df["p.adj"] = util.bh_adjust(df.pval.to_numpy())
-        return df.set_index('gene')
+        return df

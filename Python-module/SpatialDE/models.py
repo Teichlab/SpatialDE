@@ -10,7 +10,23 @@ from scipy.stats import chi2
 
 from .kernels import Kernel
 
-class Model(metaclass=ABCMeta):
+class TestableModel(metaclass=ABCMeta):
+    @property
+    @abstractmethod
+    def K(self) -> np.ndarray:
+        pass
+
+    @property
+    @abstractmethod
+    def y(self) -> np.ndarray:
+        pass
+
+    @property
+    @abstractmethod
+    def rawy(self) -> np.ndarray:
+        pass
+
+class Model(TestableModel):
     def __init__(self, X: np.ndarray, kernel: Kernel):
         self.X = X
         self.n = X.shape[0]
