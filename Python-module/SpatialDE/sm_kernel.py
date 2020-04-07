@@ -18,6 +18,10 @@ class Spectral(Stationary):
 
         self._validate_ard_active_dims(self.periods)
 
+    @property
+    def ard(self) -> bool:
+        return self.lengthscales.shapes.ndims > 0 or self.periods.shapes.ndims > 0
+
     def K(self, X, X2=None):
         return self.variance * self.K_novar(X, X2)
 
@@ -77,7 +81,7 @@ class SpectralMixture(Sum):
 
     def plot_power_spectrum(self, xlim=None, ylim=None, **kwargs):
         if xlim is None or ylim is None:
-            lengthscales = tf.convert_to_tensor([k.lengthscale for k in self.kernels])
+            lengthscales = tf.convert_to_tensor([k.lengthscales for k in self.kernels])
             if lengthscales.ndim < 2:
                 lengthscales = tf.tile(tf.expand_dims(lengthscales, axis=1), (1, 2))
             periods = tf.convert_to_tensor([k.period for k in self.kernels])
@@ -93,7 +97,7 @@ class SpectralMixture(Sum):
             ylim = limits[1]
 
         dim = max(
-            [k.lengthscale.ndim for k in self.kernels] + [k.period.ndim for k in self.kernels]
+            [k.lengthscales.ndim for k in self.kernels] + [k.periods.ndim for k in self.kernels]
         )
         fig, ax = plt.subplots()
         if dim < 1:

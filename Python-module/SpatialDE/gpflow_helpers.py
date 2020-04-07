@@ -63,11 +63,13 @@ class GeneGPModel(metaclass=ABCMeta):
         return self._rawy.numpy()
 
     @staticmethod
-    def mixture_kernel(X, ncomponents=5, ard=True, minvar=1e-3):
+    def mixture_kernel(X, Y, ncomponents=5, ard=True, minvar=1e-3):
         range = tf.reduce_min(tf.reduce_max(X, axis=0) - tf.reduce_min(X, axis=0))
         dist = tf.sqrt(gpflow.utilities.ops.square_distance(X, None))
         dist = tf.linalg.set_diag(dist, tf.fill((X.shape[0],), tf.cast(np.inf, dist.dtype)))
         min_1nndist = tf.reduce_min(dist)
+
+        datarange = tf.math.reduce_max(tf.math.reduce_max(X, axis=0) - tf.math.reduce_min(X, axis=0))
 
         minperiod = 2 * min_1nndist
         varinit = min_1nndist + 0.5 * (range - min_1nndist)
@@ -77,11 +79,13 @@ class GeneGPModel(metaclass=ABCMeta):
             varinit = tf.repeat(varinit, X.shape[1])
             periodinit = tf.repeat(periodinit, X.shape[1])
 
+        maxvar = 10 * tf.math.reduce_variance(Y)
         kernels = []
-        for v in np.linspace(minvar, 1, ncomponents):
+        for v in np.linspace(minvar, np.minimum(1, 0.9 * maxvar), ncomponents):
             k = Spectral(variance=v, lengthscales=varinit, periods=periodinit)
-            k.lengthscales.transform = gpflow.utilities.positive(lower=0.1 * min_1nndist)
-            k.periods.transform = gpflow.utilities.positive(lower=minperiod)
+            k.lengthscales.transform = tfp.bijectors.Sigmoid(low=0.1 * min_1nndist, high=datarange)
+            k.periods.transform = tfp.bijectors.Sigmoid(low=minperiod, high=2 * datarange)
+            k.variance.transform = tfp.bijectors.Sigmoid(low=gpflow.utilities.to_default_float(0), high=gpflow.utilities.to_default_float(maxvar))
             kernels.append(k)
         kern = SpectralMixture(kernels)
         return SMPlusLinearKernel(kern)
@@ -97,7 +101,7 @@ class GPR(gpflow.models.GPR, GeneGPModel):
         ard: bool = True,
         minvar: float = 1e-3,
     ):
-        kern = self.mixture_kernel(X, n_kernel_components, ard, minvar)
+        kern = self.mixture_kernel(X, Y, n_kernel_components, ard, minvar)
         super().__init__(data=[X, Y], kernel=kern, mean_function=gpflow.mean_functions.Constant())
         self._rawy = rawY
 
@@ -120,7 +124,7 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
         ard: bool = True,
         minvar: float = 1e-3,
     ):
-        kern = self.mixture_kernel(X, n_kernel_components, ard, minvar)
+        kern = self.mixture_kernel(X, Y, n_kernel_components, ard, minvar)
         super().__init__(
             data=[X, Y],
             kernel=kern,
@@ -262,9 +266,9 @@ class GeneGP(TestableModel):
             **kwargs,
         )
         if isinstance(res, dict) and "hess_inv" in res:
-            self._invHess = tf.cast(res["hess_inv"], gpflow.config.default_float())
+            self._invHess = gpflow.utilities.to_default_float(res["hess_inv"])
         elif hasattr(res, "hess_inv"):
-            self._invHess = tf.cast(res.hess_inv, gpflow.config.default_float())
+            self._invHess = gpflow.utilities.to_default_float(res.hess_inv)
 
     def _freeze(self):
         if self._frozen:
