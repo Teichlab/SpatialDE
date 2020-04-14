@@ -51,29 +51,6 @@ def get_l_limits(X):
     return l_min, l_max
 
 
-def simulate_const_model(MLL_params, N):
-    dfm = np.zeros((N, MLL_params.shape[0]))
-    for i, params in enumerate(MLL_params.iterrows()):
-        params = params[1]
-        s2_e = params.max_s2_t_hat * params.max_delta
-        dfm[:, i] = np.random.normal(params.max_mu_hat, s2_e, N)
-
-    dfm = pd.DataFrame(dfm)
-    return dfm
-
-
-def get_mll_results(results, null_model="const"):
-    null_lls = results.query('model == "{}"'.format(null_model))[["g", "max_ll"]]
-    model_results = results.query('model != "{}"'.format(null_model))
-    model_results = model_results[
-        model_results.groupby(["g", "model"])["max_ll"].transform(max) == model_results["max_ll"]
-    ]
-    mll_results = model_results.merge(null_lls, on="g", suffixes=("", "_null"))
-    mll_results["LLR"] = mll_results["max_ll"] - mll_results["max_ll_null"]
-
-    return mll_results
-
-
 def inducers_grid(X, ninducers):
     rngmin = X.min(0)
     rngmax = X.max(0)
@@ -327,7 +304,9 @@ def run(
     logging.info("Finished fitting {} models to {} genes".format(n_models, n_genes))
 
     results = pd.concat(results, sort=True).reset_index(drop=True)
-    sizes = results.groupby(["model", "gene"], sort=False).size().groupby("model", sort=False).unique()
+    sizes = (
+        results.groupby(["model", "gene"], sort=False).size().groupby("model", sort=False).unique()
+    )
     results = results.set_index("model")
     results.loc[sizes > 1, "M"] += 1
     results = results.reset_index()
@@ -375,52 +354,3 @@ def fit_patterns(
     rng: np.random.Generator = np.random.default_rng(),
 ):
     return run_gpflow(X, exp_tab, control, rng)
-
-
-def model_search(X, exp_tab, DE_mll_results, kernel_space=None):
-    """ Compare model fits with different models.
-
-    This way DE genes can be classified to interpretable function classes.
-
-    The strategy is based on ABCD in the Automatic Statistician, but
-    using precomputed covariance matrices for all models in the search space.
-
-    By default searches a grid of periodic covariance matrices and a linear
-    covariance matrix.
-    """
-    if kernel_space == None:
-        P_min, P_max = get_l_limits(X)
-        kernel_space = {
-            "PER": np.logspace(np.log10(P_min), np.log10(P_max), 10),
-            "linear": 0,
-        }
-
-    de_exp_tab = exp_tab[DE_mll_results["g"]]
-
-    logging.info("Performing model search")
-    results = dyn_de(X, de_exp_tab, kernel_space)
-    new_and_old_results = pd.concat((results, DE_mll_results), sort=True)
-
-    # Calculate model probabilities
-    mask = (
-        new_and_old_results.groupby(["g", "model"])["BIC"].transform(min)
-        == new_and_old_results["BIC"]
-    )
-    log_p_data_Hi = -new_and_old_results[mask].pivot_table(values="BIC", index="g", columns="model")
-    log_Z = logsumexp(log_p_data_Hi, 1)
-    log_p_Hi_data = (log_p_data_Hi.T - log_Z).T
-    p_Hi_data = np.exp(log_p_Hi_data).add_suffix("_prob")
-
-    # Select most likely model
-    mask = new_and_old_results.groupby("g")["BIC"].transform(min) == new_and_old_results["BIC"]
-    ms_results = new_and_old_results[mask]
-
-    ms_results = ms_results.join(p_Hi_data, on="g")
-
-    # Retain information from significance testing in the new table
-    transfer_columns = ["pval", "qval", "max_ll_null"]
-    ms_results = ms_results.drop(transfer_columns, 1).merge(
-        DE_mll_results[transfer_columns + ["g"]], on="g"
-    )
-
-    return ms_results
