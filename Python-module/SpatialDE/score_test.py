@@ -4,6 +4,8 @@ from typing import Optional
 
 import numpy as np
 from scipy.stats import chi2
+from scipy.special import loggamma, digamma
+from scipy.optimize import minimize
 
 from .models import TestableModel
 
@@ -34,16 +36,12 @@ class ScoreTest(metaclass=ABCMeta):
     @property
     def _K(self):
         if self._K_ is None:
-            if self.model is None:
-                raise RuntimeError(
-                    "This ScoreTest does not have a model. Please assign a TestableModel to the model attribute of this ScoreTest object."
-                )
-            return self.model.K
+            return self._getK()
         else:
             return self._K_
 
     def __enter__(self):
-        self._K_ = self._K
+        self._K_ = self._getK()
         return self
 
     def __exit__(self, *args):
@@ -60,6 +58,13 @@ class ScoreTest(metaclass=ABCMeta):
         ch2 = chi2(nu)
         pval = ch2.sf(stat / kappa)
         return ScoreTestResults(kappa, nu, stat, pval)
+
+    def _getK(self):
+        if self.model is None:
+            raise RuntimeError(
+                "This ScoreTest does not have a model. Please assign a TestableModel to the model attribute of this ScoreTest object."
+            )
+        return self.model.K
 
 
 class GaussianScoreTest(ScoreTest):
@@ -107,35 +112,49 @@ class NegativeBinomialScoreTest(ScoreTest):
         self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Optional[TestableModel] = None
     ):
         super().__init__(X, Y, rawY, model)
-        self.sizefactors = np.sum(rawY, axis=1) / 1e3
+        self.sizefactors = np.sum(rawY, axis=1) * 1e-3
         yidx = self.sizefactors.nonzero()[0]
         self.yidx = None
         if yidx.shape[0] != self.sizefactors.shape[0]:
             self.yidx = yidx
             self.sizefactors = np.take(self.sizefactors, self.yidx)
 
-    def __call__(self):
-        rawy = self.model.rawy
-        K = self._K
+    def _getK(self):
+        K = super()._getK()
         if self.yidx is not None:
             rawy = np.take(self.model.rawy, self.yidx)
             K = np.take(K, np.ravel_multi_index(np.ix_(self.yidx, self.yidx), K.shape))
-        y = rawy / self.sizefactors
-        alpha = self._moments_dispersion_estimate(y)
-        if alpha < 0:
-            alpha = 0  # we do not allow underdispersion. alpha=0 reduces to a Poisson null model
+        return K
 
-        mu = np.mean(y) * self.sizefactors
+    def __call__(self):
+        rawy = self.model.rawy
+        if self.yidx is not None:
+            rawy = rawy[self.yidx]
+        K = self._K
+
+        scaledy = rawy / self.sizefactors
+        res = minimize(
+            self._negative_negbinom_loglik,
+            x0=[np.log(np.mean(scaledy)), 0],
+            args=(rawy, self.sizefactors),
+            jac=self._grad_negative_negbinom_loglik,
+            method="bfgs",
+        )
+        alpha = np.exp(res.x[1])
+        mu = np.exp(res.x[0]) * self.sizefactors
+
         W = mu / (1 + alpha * mu)
 
         stat = 0.5 * np.sum((rawy / mu - 1) * W * np.dot(K, W * (rawy / mu - 1)))
 
-        PK = W * K - W[:, np.newaxis] * W[np.newaxis, :] @ K / np.sum(W)
+        P = np.diag(W) - W[:, np.newaxis] * W[np.newaxis, :] / np.sum(W)
+        PK = W[:, np.newaxis] * K - W[:, np.newaxis] * ((W[np.newaxis, :] @ K) / np.sum(W))
         trace_PK = np.trace(PK)
         e_tilde = 0.5 * trace_PK
-        I_tau_tau_tilde = 0.5 * np.sum(
-            PK * PK
-        )  # I_tau_theta and I_theta_theta are zero since phi is fixed
+        I_tau_tau = 0.5 * np.sum(PK * PK)
+        I_tau_theta = 0.5 * np.sum(PK * P)
+        I_theta_theta = 0.5 * np.sum(np.square(P))
+        I_tau_tau_tilde = I_tau_tau - np.square(I_tau_theta) / I_theta_theta
 
         return self._calc_test(stat, e_tilde, I_tau_tau_tilde)
 
@@ -149,3 +168,35 @@ class NegativeBinomialScoreTest(ScoreTest):
         m = np.mean(y)
         s = np.mean(1 / self.sizefactors)
         return (v - s * m) / np.square(m)
+
+    @staticmethod
+    def _negative_negbinom_loglik(params, counts, sizefactors):
+        logmu = params[0]
+        logalpha = params[1]
+        mus = np.exp(logmu) * sizefactors
+        nexpalpha = np.exp(-logalpha)
+        ct_plus_alpha = counts + nexpalpha
+        return -np.sum(
+            loggamma(ct_plus_alpha)
+            - loggamma(nexpalpha)
+            - ct_plus_alpha * np.log(1 + np.exp(logalpha) * mus)
+            + counts * logalpha
+            + counts * np.log(mus)
+            - loggamma(counts + 1)
+        )
+
+    @staticmethod
+    def _grad_negative_negbinom_loglik(params, counts, sizefactors):
+        logmu = params[0]
+        logalpha = params[1]
+        mu = np.exp(logmu)
+        mus = mu * sizefactors
+        nexpalpha = np.exp(-logalpha)
+        one_alpha_mu = 1 + np.exp(logalpha) * mus
+        grad = np.empty((2,))
+        grad[0] = np.sum((counts - mus) / one_alpha_mu)  # d/d_mu
+        grad[1] = np.sum(
+            nexpalpha * (digamma(nexpalpha) - digamma(counts + nexpalpha) + np.log(one_alpha_mu))
+            + (counts - mus) / one_alpha_mu
+        )  # d/d_alpha
+        return -grad

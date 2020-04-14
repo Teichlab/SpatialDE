@@ -161,7 +161,7 @@ def score_test_fast_models(
             with tests[df.name] as test:
                 for gene in df.gene:
                     t0 = time()
-                    test.model.sety(exp_tab[gene], raw_counts[gene])
+                    test.model.sety(exp_tab[gene].to_numpy(), raw_counts[gene].to_numpy())
                     stest = test()
                     t = time() - t0
                     res = {
@@ -284,8 +284,8 @@ def run(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
     raw_counts: pd.DataFrame,
+    score_test: str = "nb",
     kernel_space: Optional[dict] = None,
-    null_model: str = "const",
 ) -> pd.DataFrame:
     """ Perform SpatialDE test
 
@@ -307,13 +307,10 @@ def run(
     logging.info("Performing DE test")
     results = []
 
-    stest_class = lambda x: None
-    if null_model == "const":
+    if score_test == "nb":
+        stest_class = NegativeBinomialScoreTest
+    else:
         stest_class = GaussianConstantScoreTest
-    elif null_model == "null":
-        stest_class = GaussianNullScoreTest
-
-    stest_class = NegativeBinomialScoreTest
 
     logging.info("Fitting gene models")
     n_models = 0
@@ -350,15 +347,21 @@ def run_detailed(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
     raw_counts: pd.DataFrame,
+    score_test: str = "nb",
     control: Optional[GPControl] = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ):
     logging.info("Fitting gene models")
     res = run_gpflow(X, exp_tab, raw_counts, control, rng)
     logging.info("Finished fitting models to {} genes".format(X.shape[0]))
-
     results = res.to_df(modelcol="model")
-    stest = NegativeBinomialScoreTest(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy())
+
+    if score_test == "nb":
+        stest_class = NegativeBinomialScoreTest
+    else:
+        stest_class = GaussianConstantScoreTest
+
+    stest = stest_class(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy())
     results = score_test_detailed_models(results, stest, "model")
     results["p.adj"] = bh_adjust(results["pval"].to_numpy())
 
