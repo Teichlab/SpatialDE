@@ -5,15 +5,15 @@ HERE = Path(__file__).parent
 
 setup(
     name='SpatialDE',
-    version='1.1.3',
+    version='2.0.0-dev',
     description='Spatial and Temporal DE test',
     long_description=(HERE / 'README.rst').read_text(),
     url='https://github.com/Teichlab/SpatialDE',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        'numpy', 'scipy >= 1.0', 'pandas>=0.23', 'tqdm',
-        'NaiveDE', 'Click',
+        'numpy', 'scipy >= 1.0', 'pandas>=1.0', 'tqdm',
+        'NaiveDE', 'Click', 'gpflow >= 2.0'
     ],
     entry_points=dict(
         console_scripts=['spatialde=SpatialDE.scripts.spatialde_cli:main'],
