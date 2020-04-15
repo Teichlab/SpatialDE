@@ -43,7 +43,10 @@ class Spectral(Stationary):
         return tf.fill(tf.shape(X)[:-1], tf.squeeze(self.variance))
 
     def log_power_spectrum(self, s):
-        s = tf.convert_to_tensor(s, dtype=self.variance.dtype)
+        if not tf.is_tensor(s):
+            s = tf.convert_to_tensor(s, dtype=self.variance.dtype)
+        else:
+            s = tf.cast(s, dtype=self.variance.dtype)
         if s.ndim < 2:
             s = tf.expand_dims(s, 1)
         loc = tf.broadcast_to(self.periods, (s.shape[1],))
@@ -79,12 +82,12 @@ class SpectralMixture(Sum):
             dens.append(k.variance * k.log_power_spectrum(s))
         return tf.reduce_logsumexp(dens, axis=0)
 
-    def plot_power_spectrum(self, xlim=None, ylim=None, **kwargs):
+    def plot_power_spectrum(self, xlim:float=None, ylim:float=None, **kwargs):
         if xlim is None or ylim is None:
             lengthscales = tf.convert_to_tensor([k.lengthscales for k in self.kernels])
             if lengthscales.ndim < 2:
                 lengthscales = tf.tile(tf.expand_dims(lengthscales, axis=1), (1, 2))
-            periods = tf.convert_to_tensor([k.period for k in self.kernels])
+            periods = tf.convert_to_tensor([k.periods for k in self.kernels])
             if periods.ndim < 2:
                 periods = tf.tile(tf.expand_dims(periods, axis=1), (1, 2))
             maxfreq = tf.math.argmin(periods, axis=0, output_type=tf.int32)
@@ -92,9 +95,17 @@ class SpectralMixture(Sum):
             limits = 1 / tf.gather_nd(periods, maxfreq)
             limits += 2 * tf.gather_nd(lengthscales, maxfreq)
         if xlim is None:
-            xlim = limits[0]
+            xlim = limits[0].numpy()
+        else:
+            xlim = np.asarray([xlim])[0]
         if ylim is None:
-            ylim = limits[1]
+            ylim = limits[1].numpy()
+        else:
+            ylim = np.asarray([ylim])[0]
+
+        limtype = np.promote_types(xlim.dtype, ylim.dtype)
+        xlim = xlim.astype(limtype)
+        ylim = ylim.astype(limtype)
 
         dim = max(
             [k.lengthscales.ndim for k in self.kernels] + [k.periods.ndim for k in self.kernels]
@@ -108,7 +119,7 @@ class SpectralMixture(Sum):
             ax.set_xlabel("frequency")
             ax.set_ylabel("log spectral density")
         else:
-            x, y = tf.meshgrid(tf.linspace(0, xlim, 1000), tf.linspace(0, ylim, 1000))
+            x, y = tf.meshgrid(tf.linspace(0., xlim, 1000), tf.linspace(0., ylim, 1000))
             ps = tf.reshape(
                 self.log_power_spectrum(
                     tf.stack([tf.reshape(x, (-1,)), tf.reshape(y, (-1,))], axis=1)

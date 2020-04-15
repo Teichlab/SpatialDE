@@ -184,7 +184,7 @@ def score_test_detailed_models(results: pd.DataFrame, test: ScoreTest, modelkey)
 def run_gpflow(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
-    raw_counts: pd.DataFrame,
+    raw_counts: Optional[pd.DataFrame] = None,
     control: Optional[GPControl] = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ):
@@ -210,7 +210,7 @@ def run_gpflow(
                     exp_tab.iloc[:, g].to_numpy()[:, np.newaxis],
                     dtype=gpflow.config.default_float(),
                 ),
-                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]),
+                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]) if raw_counts is not None else None,
                 n_kernel_components=control.ncomponents,
                 ard=control.ard,
             )
@@ -246,7 +246,7 @@ def run_gpflow(
                     exp_tab.iloc[:, g].to_numpy()[:, np.newaxis],
                     dtype=gpflow.config.default_float(),
                 ),
-                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]),
+                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]) if raw_counts is not None else None,
                 inducing_variable=inducers,
                 n_kernel_components=control.ncomponents,
                 ard=control.ard,
@@ -327,7 +327,7 @@ def run_detailed(
     exp_tab: pd.DataFrame,
     raw_counts: pd.DataFrame,
     score_test: str = "nb",
-    control: Optional[GPControl] = GPControl(),
+    control: GPControl = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ):
     logging.info("Fitting gene models")
@@ -347,10 +347,10 @@ def run_detailed(
     return results.reset_index(drop=True)
 
 
-def fit_patterns(
+def fit_mixture_kernel(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
-    control: Optional[GPControl] = GPControl(),
+    control: GPControl = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ):
-    return run_gpflow(X, exp_tab, control, rng)
+    return run_gpflow(X, exp_tab, control=control, rng=rng)

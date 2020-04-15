@@ -209,7 +209,7 @@ class GeneGP(TestableModel):
             X = self.model.data[0]
         return self.model.predict_f(X)[0]
 
-    def plot_power_spectrum(self, xlim=None, ylim=None, **kwargs):
+    def plot_power_spectrum(self, xlim:float=None, ylim:float=None, **kwargs):
         return self.model.kernel.spectral_mixture.plot_power_spectrum(xlim, ylim, **kwargs)
 
     @property
