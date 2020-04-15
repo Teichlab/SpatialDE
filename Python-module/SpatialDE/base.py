@@ -45,7 +45,7 @@ def get_l_limits(X):
     R_vals = np.unique(R2.flatten())
     R_vals = R_vals[R_vals > 1e-8]
 
-    l_min = np.sqrt(R_vals.min()) / 2.0
+    l_min = np.sqrt(R_vals.min()) * 2.0
     l_max = np.sqrt(R_vals.max()) * 2.0
 
     return l_min, l_max
