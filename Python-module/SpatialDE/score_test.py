@@ -135,7 +135,10 @@ class NegativeBinomialScoreTest(ScoreTest):
         scaledy = rawy / self.sizefactors
         res = minimize(
             self._negative_negbinom_loglik,
-            x0=[np.log(np.mean(scaledy)), 0],
+            x0=[
+                np.log(np.mean(scaledy)),
+                np.log(np.maximum(1e-8, self._moments_dispersion_estimate(scaledy))),
+            ],
             args=(rawy, self.sizefactors),
             jac=self._grad_negative_negbinom_loglik,
             method="bfgs",
