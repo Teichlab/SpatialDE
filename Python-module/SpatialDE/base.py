@@ -83,8 +83,8 @@ def fit_model(model: Model, exp_tab: pd.DataFrame, raw_counts: pd.DataFrame):
                     "time": t,
                     "n": model.n,
                     "FSV": model.FSV,
-                    "s2_FSV": model.s2_FSV,
-                    "s2_logdelta": model.s2_logdelta,
+                    "s2_FSV": np.abs(model.s2_FSV), # we are at the optimum, so this should never be negative.
+                    "s2_logdelta": np.abs(model.s2_logdelta), # Negative results are due to numerical errors when evaluating vanishing Hessians
                     "converged": res.success,
                     "M": model.n_parameters,
                 }
