@@ -2,6 +2,7 @@ import tensorflow as tf
 from gpflow.utilities.ops import square_distance
 
 import numpy as np
+import pandas as pd
 
 from typing import Optional, List, Union
 from dataclasses import dataclass
@@ -182,7 +183,7 @@ def tissue_segmentation(
     dtype = tf.float64
     labels_dtype = tf.int32
     nclasses = params.nclasses
-    nsamples = df.shape[0]
+    nsamples = counts.shape[0]
     if nclasses is None:
         nclasses = tf.cast(
             tf.math.ceil(tf.sqrt(tf.convert_to_tensor(nsamples, dtype=tf.float32))), tf.int32
@@ -195,8 +196,8 @@ def tissue_segmentation(
     eta_1 = tf.convert_to_tensor(params.eta_1, dtype=dtype)
     eta_2 = tf.convert_to_tensor(params.eta_2, dtype=dtype)
 
-    counts = tf.convert_to_tensor(df[genes].to_numpy().T, dtype=dtype)
-    sizefactors = df.sum(axis=1).to_numpy()[np.newaxis, :] * 1e-3
+    counts = tf.convert_to_tensor(counts[genes].to_numpy().T, dtype=dtype)
+    sizefactors = counts.sum(axis=0).to_numpy()[np.newaxis, :] * 1e-3
 
     distances = None
     if X is not None and (params.neighbors is None or params.neighbors > 0):
