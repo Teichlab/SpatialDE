@@ -1,0 +1,302 @@
+import tensorflow as tf
+from gpflow.utilities.ops import square_distance
+
+import numpy as np
+
+from typing import Optional, List, Union
+from dataclasses import dataclass
+from enum import Enum, auto
+import logging
+
+@dataclass(frozen=True)
+class TissueSegmentationParameters:
+    nclasses: Optional[int] = None
+    neighbors: Optional[int] = None
+    smoothness_factor: float = 2
+    class_prune_threshold: float = 1e-6
+    abstol: float = 1e-3
+    reltol: float = 1e-6
+    maxiter: int = 1000
+    gamma_1: float = 1e-14
+    gamma_2: float = 1e-14
+    eta_1: float = 1e-6
+    eta_2: float = 1e-6
+
+    def __post_init__(self):
+        assert self.nclasses is None or self.nclasses >= 1, "Number of classes must be None or at least 1"
+        assert self.neighbors is None or self.neighbors >= 0, "Number of neighbors must be None or at least 0"
+        assert self.smoothness_factor > 0, "Smoothness factor must be greater than 0"
+        assert self.class_prune_threshold >= 0 and self.class_prune_threshold <= 1, "Class pruning threshold must be between 0 and 1"
+        assert self.abstol > 0, "Absolute tolerance must be greater than 0"
+        assert self.reltol > 0, "Relative tolerance must be greater than 0"
+        assert self.maxiter >= 1, "Maximum number of iterations must be greater than or equal to 1"
+        assert self.gamma_1 > 0, "Gamma1 hyperparameter must be greater than 0"
+        assert self.gamma_2 > 0, "Gamma2 hyperparameter must be greater than 0"
+        assert self.eta_1 > 0, "Eta1 hyperparameter must be greater than 0"
+        assert self.eta_2 > 0, "Eta2 hyperparameter must be greater than 0"
+
+
+class TissueSegmentationStatus(Enum):
+    AbsoluteToleranceReached = auto()
+    RelativeToleranceReached = auto()
+    MaximumIterationsReached = auto()
+
+
+@dataclass(frozen=True)
+class TissueSegmentation:
+    converged: bool
+    status: TissueSegmentationStatus
+    labels: np.ndarray
+    class_probabilities: np.ndarray
+    gammahat_1: np.ndarray
+    gammahat_2: np.ndarray
+    niter: int
+    prune_iterations: np.ndarray
+    elbo_trace: np.ndarray
+    nclasses_trace: np.ndarray
+
+
+@tf.function(experimental_relax_shapes=True)
+def _prune_components(labels: tf.Tensor, pihat: tf.Tensor, threshold: tf.Tensor, everything=False):
+    toretain = tf.squeeze(tf.where(tf.reduce_any(pihat > threshold, axis=1)), axis=1)
+    if not everything:
+        toretain = tf.range(
+            tf.reduce_max(toretain) + 1
+        )  # we can not prune everything during optimization, then vhat3_cumsum would be wrong
+        return tf.cast(toretain, labels.dtype), labels
+    return _prune_labels(labels, tf.cast(toretain, labels.dtype))
+
+
+@tf.function(experimental_relax_shapes=True)
+def _prune_labels(labels: tf.Tensor, toretain: Optional[tf.Tensor] = None):
+    if toretain is None:
+        ulabels, _ = tf.unique(labels)
+        toretain = tf.sort(ulabels)
+    diffs = toretain[1:] - toretain[:-1]
+    missing = tf.cast(tf.where(diffs > 1), labels.dtype)
+    if tf.size(missing) > 0:
+        missing = tf.squeeze(missing, axis=1)
+        todrop = tf.TensorArray(tf.int32, size=tf.size(missing), infer_shape=False)
+        shift = 0
+        for i in tf.range(tf.size(missing)):
+            m = missing[i]
+            idx = tf.where(labels > toretain[m] - shift)
+            shift += diffs[m] - 1
+            labels = tf.tensor_scatter_nd_sub(labels, idx, tf.repeat(diffs[m] - 1, tf.size(idx)))
+            todrop = todrop.write(i, tf.range(m + 1, m + diffs[m]))
+        todrop = todrop.concat()
+        idx = tf.squeeze(
+            tf.sparse.to_dense(
+                tf.sets.difference(
+                    tf.range(tf.reduce_max(toretain) + 1)[tf.newaxis, :],
+                    tf.convert_to_tensor(todrop[tf.newaxis, :], dtype=labels.dtype),
+                )
+            )
+        )
+    else:
+        idx = tf.range(tf.size(toretain))
+    return idx, labels
+
+
+@tf.function(experimental_relax_shapes=True)
+def _segment(
+    counts: tf.Tensor,
+    sizefactors: tf.Tensor,
+    distances: tf.Tensor,
+    nclasses: tf.Tensor,
+    ngenes: tf.Tensor,
+    labels: tf.Tensor,
+    gamma_1: tf.Tensor,
+    gamma_2: tf.Tensor,
+    eta_1: tf.Tensor,
+    eta_2: tf.Tensor,
+    alphahat_1: tf.Tensor,
+    alphahat_2: tf.Tensor,
+    etahat_2: tf.Tensor,
+    gammahat_1: tf.Tensor,
+    gammahat_2: tf.Tensor,
+):
+    eta_1_nclasses = eta_1 + tf.cast(nclasses, eta_1.dtype)
+    if labels is not None and distances is not None:
+        p_x_neighborhood = tf.TensorArray(counts.dtype, size=tf.shape(gammahat_1)[0])
+        for c in tf.range(tf.shape(gammahat_1)[0]):
+            p_x_neighborhood = p_x_neighborhood.write(
+                c, -tf.reduce_sum(tf.where(labels != c, distances, 0), axis=1)
+            )
+        p_x_neighborhood = p_x_neighborhood.stack()
+        p_x_neighborhood = p_x_neighborhood - tf.reduce_logsumexp(
+            p_x_neighborhood, axis=0, keepdims=True
+        )
+    else:
+        p_x_neighborhood = tf.convert_to_tensor(0, counts.dtype)
+
+    lambdahat_1 = gammahat_1 / gammahat_2
+    lambdahat_2 = tf.math.digamma(gammahat_1) - tf.math.log(gammahat_2)
+    alpha12 = alphahat_1 + alphahat_2
+    dgalpha = tf.math.digamma(alpha12)
+    vhat1 = alphahat_1 / alpha12
+    vhat2 = tf.math.digamma(alphahat_1) - dgalpha
+    vhat3 = tf.math.digamma(alphahat_2) - dgalpha
+    alphahat = eta_1_nclasses / etahat_2
+
+    vhat3_cumsum = tf.cumsum(vhat3) - vhat3
+    vhat3_sum = tf.reduce_sum(vhat3[:-1])
+    phi = (
+        p_x_neighborhood
+        + vhat3_cumsum[:, tf.newaxis]
+        + vhat2[:, tf.newaxis]
+        + lambdahat_2 @ counts
+        - sizefactors * tf.reduce_sum(lambdahat_1, axis=1, keepdims=True)
+    )
+    pihat = tf.nn.softmax(phi, axis=0)
+    pihat_cumsum = tf.cumsum(pihat, axis=0, reverse=True) - pihat
+
+    gammahat_1 = gamma_1 + tf.matmul(pihat, counts, transpose_b=True)
+    gammahat_2 = gamma_2 + tf.matmul(pihat, sizefactors, transpose_b=True)
+    etahat_2 = eta_2 - vhat3_sum
+    alphahat_1 = 1 + ngenes * tf.reduce_sum(pihat, axis=1)
+    alphahat_2 = ngenes * tf.reduce_sum(pihat_cumsum, axis=1) + alphahat
+
+    elbo = (
+        (alphahat - 1) * vhat3_sum
+        + (eta_1_nclasses - 2) * (tf.math.lgamma(eta_1_nclasses) - tf.math.log(etahat_2))
+        + tf.reduce_sum((gamma_1 - gammahat_1) * lambdahat_2)
+        + tf.reduce_sum((gammahat_2 - gamma_2) * lambdahat_1)
+        - eta_2 * alphahat
+        + tf.reduce_sum(tf.reduce_logsumexp(phi, axis=0))
+        - tf.reduce_sum(gammahat_1 * tf.math.log(gammahat_2) - tf.math.lgamma(gammahat_1))
+        - tf.reduce_sum(tf.math.digamma(alphahat_1) - tf.math.digamma(alphahat_1 + alphahat_2))
+    )
+
+    return pihat, alphahat_1, alphahat_2, etahat_2, gammahat_1, gammahat_2, elbo
+
+
+def tissue_segmentation(
+    X: Optional[pd.DataFrame],
+    counts: pd.DataFrame,
+    genes: List[str],
+    params: TissueSegmentationParameters = TissueSegmentationParameters(),
+    labels: Optional[Union[np.ndarray, tf.Tensor]] = None,
+    rng: np.random.Generator = np.random.default_rng(),
+):
+    dtype = tf.float64
+    labels_dtype = tf.int32
+    nclasses = params.nclasses
+    nsamples = df.shape[0]
+    if nclasses is None:
+        nclasses = tf.cast(
+            tf.math.ceil(tf.sqrt(tf.convert_to_tensor(nsamples, dtype=tf.float32))), tf.int32
+        )
+    ngenes = len(genes)
+    fngenes = tf.convert_to_tensor(ngenes, dtype=dtype)
+
+    gamma_1 = tf.convert_to_tensor(params.gamma_1, dtype=dtype)
+    gamma_2 = tf.convert_to_tensor(params.gamma_2, dtype=dtype)
+    eta_1 = tf.convert_to_tensor(params.eta_1, dtype=dtype)
+    eta_2 = tf.convert_to_tensor(params.eta_2, dtype=dtype)
+
+    counts = tf.convert_to_tensor(df[genes].to_numpy().T, dtype=dtype)
+    sizefactors = df.sum(axis=1).to_numpy()[np.newaxis, :] * 1e-3
+
+    distances = None
+    if X is not None and (params.neighbors is None or params.neighbors > 0):
+        coords = tf.convert_to_tensor(X.to_numpy(), dtype=dtype)
+        distances = square_distance(coords, None)
+        if params.neighbors is not None and params.neighbors < nsamples:
+            distances, indices = tf.math.top_k(-distances, k=params.neighbors + 1, sorted=True)
+            distances = -distances[:, 1:]
+            distances = 2 * params.smoothness_factor * tf.reduce_min(distances) / distances
+            indices = indices[:, 1:]
+            indices = tf.stack(
+                (tf.repeat(tf.range(distances.shape[0]), indices.shape[1]), tf.reshape(indices, -1)), axis=1
+            )
+            dists = tf.reshape(distances, -1)
+            distances = tf.scatter_nd(indices, dists, (distances.shape[0], distances.shape[0]))
+            distances = tf.tensor_scatter_nd_update(distances, indices[:, ::-1], dists)  # symmetrize
+        else:
+            distances = tf.linalg.set_diag(distances, tf.repeat(tf.convert_to_tensor(np.inf, dtype), tf.shape(distances)[0]))
+            distances = 2 * params.smoothness_factor * tf.reduce_min(distances) / distances
+
+    if labels is not None:
+        labels = tf.squeeze(tf.convert_to_tensor(labels, dtype=labels_dtype))
+        if tf.rank(labels) > 1 or tf.shape(labels)[0] != nsamples:
+            labels = None
+            logging.warning(
+                "Shape of given labels does not conform to data. Initializing with random labels."
+            )
+    if labels is None and distances is not None:
+        labels = tf.convert_to_tensor(rng.choice(nclasses, nsamples), dtype=labels_dtype)
+
+    eta_1_nclasses = eta_1 + tf.cast(nclasses, dtype=dtype)
+    alphahat_1 = tf.ones(shape=(nclasses,), dtype=dtype)
+    alphahat_2 = tf.ones(shape=(nclasses,), dtype=dtype)
+    etahat_2 = eta_1_nclasses
+    gammahat_1 = tf.fill((nclasses, ngenes), tf.convert_to_tensor(1e-6, dtype=dtype))
+    gammahat_2 = tf.fill((nclasses, 1), tf.convert_to_tensor(1e-6, dtype=dtype))
+
+    prune_threshold = tf.convert_to_tensor(params.class_prune_threshold, dtype=dtype)
+    lastelbo = -tf.convert_to_tensor(np.inf, dtype=dtype)
+    elbos = []
+    nclassestrace = []
+    pruneidx = []
+    converged = False
+    status = TissueSegmentationStatus.MaximumIterationsReached
+    for i in range(params.maxiter):
+        (pihat, alphahat_1, alphahat_2, etahat_2, gammahat_1, gammahat_2, elbo,) = _segment(
+            counts,
+            sizefactors,
+            distances,
+            nclasses,
+            ngenes,
+            labels,
+            gamma_1,
+            gamma_2,
+            eta_1,
+            eta_2,
+            alphahat_1,
+            alphahat_2,
+            etahat_2,
+            gammahat_1,
+            gammahat_2,
+        )
+        labels = tf.math.argmax(pihat, axis=0, output_type=labels_dtype)
+        elbos.append(elbo.numpy())
+        nclassestrace.append(nclasses)
+        elbodiff = tf.abs(elbo - lastelbo)
+        if elbodiff < params.abstol:
+            converged = True
+            status = TissueSegmentationStatus.AbsoluteToleranceReached
+            break
+        elif elbodiff / tf.minimum(tf.abs(elbo), tf.abs(lastelbo)) < params.reltol:
+            converged = True
+            status = TissueSegmentationStatus.AbsoluteToleranceReached
+            break
+        lastelbo = elbo
+
+        if i == 1 or not i % 10:
+            idx, labels = _prune_components(labels, pihat, prune_threshold, everything=True)
+            if tf.size(idx) < tf.shape(gammahat_1)[0]:
+                pruneidx.append(i)
+            alphahat_1 = tf.gather(alphahat_1, idx, axis=0)
+            alphahat_2 = tf.gather(alphahat_2, idx, axis=0)
+            gammahat_1 = tf.gather(gammahat_1, idx, axis=0)
+            gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
+            nclasses = tf.size(idx)
+
+    idx, labels = _prune_components(labels, pihat, prune_threshold, everything=True)
+    labels = _prune_labels(labels)[1]
+    pihat = tf.linalg.normalize(tf.gather(pihat, idx, axis=0), ord=1, axis=0)[0]
+    gammahat_1 = tf.gather(gammahat_1, idx, axis=0)
+    gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
+    return TissueSegmentation(
+        converged,
+        status,
+        labels.numpy(),
+        pihat.numpy(),
+        gammahat_1.numpy(),
+        gammahat_2.numpy(),
+        i,
+        np.asarray(pruneidx),
+        np.asarray(elbos),
+        np.asarray(nclassestrace),
+    )
