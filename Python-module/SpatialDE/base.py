@@ -13,17 +13,15 @@ import pandas as pd
 
 import tensorflow as tf
 import tensorflow_probability as tfp
+from .kernels import DistanceCache, SquaredExponential, Cosine, Linear
 
 from tqdm.auto import tqdm
 
-from .kernels import SquaredExponential, Cosine, Linear
 from .models import Model, Constant, Null, model_factory
 from .util import bh_adjust, Kernel, GP, SGPIPM, GPControl
 from .score_test import (
-    ScoreTest,
-    GaussianConstantScoreTest,
-    GaussianNullScoreTest,
     NegativeBinomialScoreTest,
+    combine_pvalues,
 )
 from .gpflow_helpers import *
 
@@ -38,15 +36,12 @@ if gpus:
         print(e)
 
 
-def get_l_limits(X):
-    Xsq = np.sum(np.square(X), 1)
-    R2 = -2.0 * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
-    R2 = np.clip(R2, 0, np.inf)
-    R_vals = np.unique(R2.flatten())
-    R_vals = R_vals[R_vals > 1e-8]
+def get_l_limits(cache: DistanceCache):
+    R2 = cache.squaredEuclideanDistance
+    R2 = R2[R2 > 1e-8]
 
-    l_min = np.sqrt(R_vals.min()) * 2.0
-    l_max = np.sqrt(R_vals.max()) * 2.0
+    l_min = tf.sqrt(tf.reduce_min(R2)) * 2.0
+    l_max = tf.sqrt(tf.reduce_max(R2))
 
     return l_min, l_max
 
@@ -83,8 +78,12 @@ def fit_model(model: Model, exp_tab: pd.DataFrame, raw_counts: pd.DataFrame):
                     "time": t,
                     "n": model.n,
                     "FSV": model.FSV,
-                    "s2_FSV": np.abs(model.s2_FSV), # we are at the optimum, so this should never be negative.
-                    "s2_logdelta": np.abs(model.s2_logdelta), # Negative results are due to numerical errors when evaluating vanishing Hessians
+                    "s2_FSV": np.abs(
+                        model.s2_FSV
+                    ),  # we are at the optimum, so this should never be negative.
+                    "s2_logdelta": np.abs(
+                        model.s2_logdelta
+                    ),  # Negative results are due to numerical errors when evaluating vanishing Hessians
                     "converged": res.success,
                     "M": model.n_parameters,
                 }
@@ -96,89 +95,133 @@ def fit_model(model: Model, exp_tab: pd.DataFrame, raw_counts: pd.DataFrame):
     return pd.DataFrame(results)
 
 
-def factory(kern: str, X: np.ndarray, lengthscale: Optional[float] = None):
-    Z = None
-    if X.shape[0] > 1000:
-        Z = inducers_grid(X, np.maximum(100, np.sqrt(X.shape[0])))
-
+def factory(kern: str, cache: DistanceCache, lengthscale: Optional[float] = None):
     if kern == "linear":
-        return model_factory(X, Z, Linear())
+        return Linear(cache)
     elif kern == "SE":
-        return model_factory(X, Z, SquaredExponential(lengthscale))
+        return SquaredExponential(cache, lengthscale=lengthscale)
     elif kern == "PER":
-        return model_factory(X, Z, Cosine(lengthscale))
-    elif kern == "const":
-        return Constant(X)
-    elif kern == "null":
-        return Null(X)
+        return Cosine(cache, lengthscale=lengthscale)
     else:
         raise ValueError("unknown kernel")
 
 
-def kspace_walk(kernel_space: dict, X: np.ndarray):
+def kspace_walk(kernel_space: dict, cache: DistanceCache):
     for kern, lengthscales in kernel_space.items():
         try:
             for l in lengthscales:
-                yield factory(kern, X, l), kern
+                yield factory(kern, cache, l), kern
         except TypeError:
-            yield factory(kern, X, lengthscales), kern
+            yield factory(kern, cache, lengthscales), kern
 
 
-def score_test_fast_models(
-    results: pd.DataFrame,
-    exp_tab: pd.DataFrame,
+def default_kernel_space(X: np.ndarray, cache: DistanceCache):
+    l_min, l_max = get_l_limits(cache)
+    return {
+        "SE": np.logspace(np.log10(l_min), np.log10(l_max), 10),
+        # "PER": np.logspace(np.log10(l_min), np.log10(l_max), 20),
+        #'linear': None
+    }
+
+def _add_individual_score_test_result(resultdict, kernel, kname, gene):
+    if "kernel" not in resultdict:
+        resultdict["kernel"] = [kname]
+    else:
+        resultdict["kernel"].append(kname)
+    if "gene" not in resultdict:
+        resultdict["gene"] = [gene]
+    else:
+        resultdict["gene"].append(gene)
+    for key, var in vars(kernel).items():
+        if key[0] != "_":
+            if key not in resultdict:
+                resultdict[key] = [var]
+            else:
+                resultdict[key].append(var)
+    return resultdict
+
+
+def dyn_de(
+    X: pd.DataFrame,
     raw_counts: pd.DataFrame,
-    tests: Dict[Tuple[str, float], ScoreTest],
-    testskey: str,
-):
-    with tqdm(total=results.shape[0]) as pbar:
+    omnibus: bool = False,
+    kernel_space: Optional[dict] = None,
+) -> pd.DataFrame:
+    logging.info("Performing DE test")
 
-        def test(df):
-            results = []
-            with tests[df.name] as test:
-                for gene in df.gene:
-                    t0 = time()
-                    test.model.sety(exp_tab[gene].to_numpy(), raw_counts[gene].to_numpy())
-                    stest = test()
-                    t = time() - t0
-                    res = {
-                        "gene": gene,
-                        "test_time": t,
-                    }
-                    res.update(stest.to_dict())
-                    results.append(res)
-                    pbar.update()
-            return pd.DataFrame(results)
+    X = X.to_numpy()
+    dcache = DistanceCache(X)
+    if kernel_space is None:
+        kernel_space = default_kernel_space(X, dcache)
 
-        testresults = results.groupby(testskey, sort=False).apply(test)
-        results = pd.concat((results.set_index("gene"), testresults.set_index("gene")), axis=1)
-        results.time += results.test_time
-        results.index.name = "gene"  # FIXME: https://github.com/pandas-dev/pandas/issues/21629
-        return results.drop(columns="test_time").reset_index()
+    individual_results = None if omnibus else []
+    if X.shape[0] <= 2000 or omnibus:
+        kernels = []
+        kernelnames = []
+        for k, name in kspace_walk(kernel_space, dcache):
+            kernels.append(k)
+            kernelnames.append(name)
+        test = NegativeBinomialScoreTest(
+            X,
+            None,
+            raw_counts.to_numpy(),
+            omnibus,
+            kernels,
+        )
 
+        results = []
+        for i, g in enumerate(tqdm(raw_counts.columns)):
+            t0 = time()
+            result = test(i)
+            t = time() - t0
+            res = {"gene": g, "time": t}
+            resultdict = result.to_dict()
+            if omnibus:
+                res.update(resultdict)
+            else:
+                res["pval"] = combine_pvalues(result).numpy()
+            results.append(res)
+            if not omnibus:
+                for k, n in zip(kernels, kernelnames):
+                    _add_individual_score_test_result(resultdict, k, n, g)
+                individual_results.append(resultdict)
 
-def score_test_detailed_models(results: pd.DataFrame, test: ScoreTest, modelkey):
-    testresults = []
-
-    with tqdm(total=results.shape[0]) as pbar:
-        for row in results.itertuples():
-            test.model = getattr(row, modelkey)
-            with test:
+    else:  # doing all tests at once with stacked kernels leads to excessive memory consumption
+        results = [[0, []] for _ in range(raw_counts.shape[1])]
+        test = NegativeBinomialScoreTest(X, None, raw_counts.to_numpy())
+        for k, n in kspace_walk(kernel_space, dcache):
+            test.kernel = k
+            for i in tqdm(range(len(raw_counts.columns))):
                 t0 = time()
-                stest = test()
+                res = test(i)
                 t = time() - t0
-                res = {
-                    "gene": row.gene,
-                    "test_time": t,
-                }
-                res.update(stest.to_dict())
-                testresults.append(res)
-                pbar.update()
-        testresults = pd.DataFrame(testresults)
-        results = pd.concat((results.set_index("gene"), testresults.set_index("gene")), axis=1)
-        results.time += results.test_time
-        results.index.name = "gene"  # FIXME: https://github.com/pandas-dev/pandas/issues/21629
-        return results.drop(columns="test_time").reset_index()
+                results[i][0] += t
+                results[i][1].append(res)
+                resultdict = res.to_dict()
+                individual_results.append(_add_individual_score_test_result(resultdict, k, n, g))
+        for i, g in enumerate(raw_counts.columns):
+            results[i] = {
+                "gene": g,
+                "time": results[i][0],
+                "pval": combine_pvalues(results[i][1]).numpy(),
+            }
+
+    results = pd.DataFrame(results)
+    results["p.adj"] = bh_adjust(results.pval.to_numpy())
+
+    if individual_results is not None:
+        merged = {}
+        for res in individual_results:
+            for k, v in res.items():
+                if k not in merged:
+                    merged[k] = v
+                else:
+                    if isinstance(merged[k], np.ndarray):
+                        merged[k] = np.concatenate((merged[k], v))
+                    else:
+                        merged[k].extend(v)
+        individual_results = pd.DataFrame(merged)
+    return results, individual_results
 
 
 def run_gpflow(
@@ -210,7 +253,9 @@ def run_gpflow(
                     exp_tab.iloc[:, g].to_numpy()[:, np.newaxis],
                     dtype=gpflow.config.default_float(),
                 ),
-                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]) if raw_counts is not None else None,
+                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis])
+                if raw_counts is not None
+                else None,
                 n_kernel_components=control.ncomponents,
                 ard=control.ard,
             )
@@ -246,7 +291,9 @@ def run_gpflow(
                     exp_tab.iloc[:, g].to_numpy()[:, np.newaxis],
                     dtype=gpflow.config.default_float(),
                 ),
-                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis]) if raw_counts is not None else None,
+                rawY=tf.constant(raw_counts.iloc[:, g].to_numpy()[:, np.newaxis])
+                if raw_counts is not None
+                else None,
                 inducing_variable=inducers,
                 n_kernel_components=control.ncomponents,
                 ard=control.ard,
@@ -257,11 +304,10 @@ def run_gpflow(
     return results
 
 
-def run(
+def run_fast(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
     raw_counts: pd.DataFrame,
-    score_test: str = "nb",
     kernel_space: Optional[dict] = None,
 ) -> pd.DataFrame:
     """ Perform SpatialDE test
@@ -273,30 +319,27 @@ def run(
     The grid of covariance matrices to search over for the alternative
     model can be specifiec using the kernel_space parameter.
     """
+    X = X.to_numpy()
+    dcache = DistanceCache(X)
     if kernel_space == None:
-        l_min, l_max = get_l_limits(X)
+        l_min, l_max = get_l_limits(cache)
         kernel_space = {
             "SE": np.logspace(np.log10(l_min), np.log10(l_max), 10),
             #'PER': np.logspace(np.log10(l_min), np.log10(l_max), 10),
             #'linear': None
         }
 
-    logging.info("Performing DE test")
-    results = []
-
-    if score_test == "nb":
-        stest_class = NegativeBinomialScoreTest
-    else:
-        stest_class = GaussianConstantScoreTest
-
     logging.info("Fitting gene models")
     n_models = 0
-    stests = {}
-    for model, mname in kspace_walk(kernel_space, X.to_numpy()):
+    Z = None
+    if X.shape[0] > 1000:
+        Z = inducers_grid(X, np.maximum(100, np.sqrt(X.shape[0])))
+
+    results = []
+    for kern, kname in kspace_walk(kernel_space, dcache):
+        model = model_factory(X.to_numpy(), Z, kern)
         res = fit_model(model, exp_tab, raw_counts)
-        stests[model] = stest_class(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy(), model)
-        res["model"] = mname
-        res["_model"] = model
+        res["model"] = kname
         results.append(res)
         n_models += 1
 
@@ -315,18 +358,13 @@ def run(
     results = results.loc[results.groupby(["model", "gene"], sort=False)["max_ll"].idxmax()]
     results = results.loc[results.groupby("gene", sort=False)["BIC"].idxmin()]
 
-    logging.info("Performing score test")
-    results = score_test_fast_models(results, exp_tab, raw_counts, stests, "_model")
-    results["p.adj"] = bh_adjust(results["pval"].to_numpy())
-
-    return results.drop(columns="_model").reset_index(drop=True)
+    return results.reset_index(drop=True)
 
 
 def run_detailed(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
     raw_counts: pd.DataFrame,
-    score_test: str = "nb",
     control: GPControl = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ):
@@ -335,22 +373,18 @@ def run_detailed(
     logging.info("Finished fitting models to {} genes".format(X.shape[0]))
     results = res.to_df(modelcol="model")
 
-    if score_test == "nb":
-        stest_class = NegativeBinomialScoreTest
-    else:
-        stest_class = GaussianConstantScoreTest
-
-    stest = stest_class(X.to_numpy(), exp_tab.to_numpy(), raw_counts.to_numpy())
-    results = score_test_detailed_models(results, stest, "model")
-    results["p.adj"] = bh_adjust(results["pval"].to_numpy())
-
     return results.reset_index(drop=True)
 
 
-def fit_mixture_kernel(
+def run(
     X: pd.DataFrame,
     exp_tab: pd.DataFrame,
-    control: GPControl = GPControl(),
+    raw_counts: pd.DataFrame,
+    control: Optional[GPControl] = GPControl,
+    kernel_space: Optional[dict] = None,
     rng: np.random.Generator = np.random.default_rng(),
 ):
-    return run_gpflow(X, exp_tab, control=control, rng=rng)
+    if control is None:
+        return run_fast(X, exp_tab, raw_counts, kernel_space)
+    else:
+        return run_detailed(X, exp_tab, raw_counts, control, rng)

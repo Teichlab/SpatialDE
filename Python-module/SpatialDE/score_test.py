@@ -1,205 +1,250 @@
 from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, fields
+from typing import Optional, Union, List
 
 import numpy as np
-from scipy.stats import chi2
-from scipy.special import loggamma, digamma
+import tensorflow as tf
+import tensorflow_probability as tfp
+
+tfd = tfp.distributions
 from scipy.optimize import minimize
 
-from .models import TestableModel
+from .kernels import Kernel
+
+from enum import Enum, auto
+import math
 
 
 @dataclass(frozen=True)
 class ScoreTestResults:
-    kappa: float
-    nu: float
-    U_tilde: float
-    pval: float
+    kappa: Union[float, tf.Tensor]
+    nu: Union[float, tf.Tensor]
+    U_tilde: Union[float, tf.Tensor]
+    e_tilde: Union[float, tf.Tensor]
+    I_tilde: Union[float, tf.Tensor]
+    pval: Union[float, tf.Tensor]
 
     def to_dict(self):
-        return {
-            "pval": self.pval,
-            "kappa": self.kappa,
-            "U_tilde": self.U_tilde,
-            "nu": self.nu,
-        }
+        ret = {}
+        for f in fields(self):
+            obj = getattr(self, f.name)
+            if tf.is_tensor(obj):
+                obj = obj.numpy()
+            ret[f.name] = obj
+        return ret
+
+
+def combine_pvalues(
+    results: Union[ScoreTestResults, List[ScoreTestResults], tf.Tensor, np.ndarray]
+) -> float:
+    if isinstance(results, ScoreTestResults):
+        pvals = results.pval
+    elif isinstance(results, list):
+        pvals = tf.stack([r.pval for r in results], axis=0)
+    elif tf.is_tensor(results):
+        pvals = results
+    elif isinstance(results, np.ndarray):
+        pvals = tf.convert_to_tensor(pvals)
+    else:
+        raise TypeError("Unknown type for results.")
+
+    comb = tf.reduce_mean(tf.tan((0.5 - pvals) * math.pi))
+    return tfd.Cauchy(
+        tf.convert_to_tensor(0, comb.dtype), tf.convert_to_tensor(1, comb.dtype)
+    ).survival_function(comb)
 
 
 class ScoreTest(metaclass=ABCMeta):
     def __init__(
-        self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Optional[TestableModel] = None
+        self,
+        X: tf.Tensor,
+        Y: tf.Tensor,
+        rawY: tf.Tensor,
+        omnibus: bool = False,
+        kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
-        self.model = model
-        self._K_ = None
+        self.dtype = tf.float64  # use single precision for better performance
+        self.omnibus = omnibus
+        self.X = X
+        self.Y = Y
+        self.rawY = rawY
+        if self.Y is not None:
+            self.Y = tf.cast(self.Y, self.dtype)
+        if self.rawY is not None:
+            self.rawY = tf.cast(self.rawY, self.dtype)
+        self.n = tf.shape(X)[0]
+
+        if kernel is not None:
+            self.kernel = kernel
+
+    def __call__(self, i) -> ScoreTestResults:
+        stat, e_tilde, I_tau_tau = self._test(i)
+        return self._calc_test(stat, e_tilde, I_tau_tau)
 
     @property
-    def _K(self):
-        if self._K_ is None:
-            return self._getK()
+    def kernel(self) -> List[Kernel]:
+        return self.kernel
+
+    @kernel.setter
+    def kernel(self, kernel: Union[Kernel, List[Kernel]]):
+        self._kernel = [kernel] if isinstance(kernel, Kernel) else kernel
+        if len(self._kernel) > 1:
+            if self.omnibus:
+                self._K = self._kernel[0].K(self.X)
+                for k in self._kernel[1:]:
+                    self._K += k.K(self.X)
+            else:
+                self._K = tf.stack([k.K(self.X) for k in kernel], axis=0)
         else:
-            return self._K_
-
-    def __enter__(self):
-        self._K_ = self._getK()
-        return self
-
-    def __exit__(self, *args):
-        self._K_ = None
+            self._K = self._kernel[0].K(self.X)
+        self._K = tf.cast(self._K, self.dtype)
 
     @abstractmethod
-    def __call__(self) -> ScoreTestResults:
+    def _test(self, i):
         pass
 
     @staticmethod
-    def _calc_test(stat, e_tilde, I_tau_tau):
+    def _calc_test(stat, e_tilde, I_tau_tau) -> ScoreTestResults:
         kappa = I_tau_tau / (2 * e_tilde)
         nu = 2 * e_tilde ** 2 / I_tau_tau
-        ch2 = chi2(nu)
-        pval = ch2.sf(stat / kappa)
-        return ScoreTestResults(kappa, nu, stat, pval)
-
-    def _getK(self):
-        if self.model is None:
-            raise RuntimeError(
-                "This ScoreTest does not have a model. Please assign a TestableModel to the model attribute of this ScoreTest object."
-            )
-        return self.model.K
-
-
-class GaussianScoreTest(ScoreTest):
-    pass
-
-
-class GaussianConstantScoreTest(GaussianScoreTest):
-    def __call__(self):
-        null_prediction = self.model.y.mean()
-        null_variance = self.model.y.var(ddof=0)
-
-        scaling = 1 / (2 * null_variance ** 2)
-        PK = self._K - np.mean(self._K, axis=0, keepdims=True)
-
-        I_tau_tau = scaling * np.sum(PK ** 2)
-        I_tau_theta = scaling * np.trace(PK)  # P is idempotent
-        I_theta_theta = scaling * self.model.n
-        I_tau_tau_tilde = I_tau_tau - I_tau_theta ** 2 / I_theta_theta
-
-        e_tilde = 1 / (2 * null_variance) * np.trace(PK)
-
-        res = self.model.y - null_prediction
-        stat = scaling * np.sum(res * np.dot(self._K, res))
-        return self._calc_test(stat, e_tilde, I_tau_tau_tilde)
-
-
-class GaussianNullScoreTest(GaussianScoreTest):
-    def __call__(self):
-        null_variance = np.sum(np.square(self.model.y)) / self.model.n
-
-        scaling = 1 / (2 * null - null_variance ** 2)
-        I_tau_tau = scaling * np.sum(np.square(self._K))
-        I_tau_theta = scaling * np.trace(self._K)
-        I_theta_theta = scaling * self.model.n
-        I_tau_tau_tilde = I_tau_tau - I_tau_theta ** 2 / I_theta_theta
-
-        e_tilde = np.trace(self._K) / (2 * null_variance)
-
-        stat = np.sum(self.model.y * np.dot(self._K, self.model.y))
-        return self._calc_test(stat, e_tilde, I_tau_tau_tilde)
+        pval = tfd.Chi2(nu).survival_function(stat / kappa)
+        return ScoreTestResults(kappa, nu, stat, e_tilde, I_tau_tau, pval)
 
 
 class NegativeBinomialScoreTest(ScoreTest):
     def __init__(
-        self, X: np.ndarray, Y: np.ndarray, rawY: np.ndarray, model: Optional[TestableModel] = None
+        self,
+        X: tf.Tensor,
+        Y: Optional[tf.Tensor],
+        rawY: tf.Tensor,
+        omnibus: bool = False,
+        kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
-        super().__init__(X, Y, rawY, model)
-        self.sizefactors = np.sum(rawY, axis=1) * 1e-3
-        yidx = self.sizefactors.nonzero()[0]
+        super().__init__(X, Y, rawY, omnibus, kernel)
+        self._parameters_cache = {}
+        self.rawY = tf.cast(
+            rawY, tf.float64
+        )  # we want float64 here, this greatly reduces the number of iterations for the MLE
+        self.sizefactors = tf.reduce_sum(self.rawY, axis=1) * 1e-3
+        yidx = tf.cast(tf.squeeze(tf.where(self.sizefactors > 0)), tf.int32)
         self.yidx = None
-        if yidx.shape[0] != self.sizefactors.shape[0]:
+
+        if tf.shape(yidx)[0] != tf.shape(self.sizefactors)[0]:
             self.yidx = yidx
-            self.sizefactors = np.take(self.sizefactors, self.yidx)
+            self.sizefactors = tf.gather(self.sizefactors, self.yidx)
+            x, y = tf.meshgrid(self.yidx, self.yidx)
+            idx = tf.reshape(tf.stack((y, x), axis=2), (-1, 2))
+            if tf.size(tf.shape(self._K)) > 2:
+                bdim = tf.shape(self._K)[0]
+                idx = tf.tile(idx, (bdim, 1))
+                idx = tf.concat(
+                    (
+                        tf.repeat(
+                            tf.range(bdim, dtype=self.yidx.dtype), tf.square(tf.size(self.yidx))
+                        )[:, tf.newaxis],
+                        idx,
+                    ),
+                    axis=1,
+                )
+            self._K = tf.squeeze(
+                tf.reshape(
+                    tf.gather_nd(self._K, idx), (-1, tf.size(self.yidx), tf.size(self.yidx)),
+                )
+            )
 
-    def _getK(self):
-        K = super()._getK()
+    def _test(self, i):
+        rawy = self.rawY[:, i]
         if self.yidx is not None:
-            rawy = np.take(self.model.rawy, self.yidx)
-            K = np.take(K, np.ravel_multi_index(np.ix_(self.yidx, self.yidx), K.shape))
-        return K
+            rawy = tf.gather(rawy, self.yidx)
 
-    def __call__(self):
-        rawy = self.model.rawy
-        if self.yidx is not None:
-            rawy = rawy[self.yidx]
-        K = self._K
+        try:
+            mu, alpha = self._parameters_cache[i]
+        except KeyError:
+            scaledy = rawy / self.sizefactors
+            res = minimize(
+                self._negative_negbinom_loglik,
+                x0=[
+                    tf.math.log(tf.reduce_mean(scaledy)),
+                    tf.math.log(tf.maximum(1e-8, self._moments_dispersion_estimate(scaledy))),
+                ],
+                args=(rawy, self.sizefactors),
+                jac=self._grad_negative_negbinom_loglik,
+                method="bfgs",
+            )
+            res.x = res.x
+            mu = tf.exp(res.x[0]) * self.sizefactors
+            alpha = tf.exp(res.x[1])
+            self._parameters_cache[i] = (mu, alpha)
 
-        scaledy = rawy / self.sizefactors
-        res = minimize(
-            self._negative_negbinom_loglik,
-            x0=[
-                np.log(np.mean(scaledy)),
-                np.log(np.maximum(1e-8, self._moments_dispersion_estimate(scaledy))),
-            ],
-            args=(rawy, self.sizefactors),
-            jac=self._grad_negative_negbinom_loglik,
-            method="bfgs",
+        return self._do_test(
+            tf.cast(rawy, self.dtype), tf.cast(alpha, self.dtype), tf.cast(mu, self.dtype)
         )
-        alpha = np.exp(res.x[1])
-        mu = np.exp(res.x[0]) * self.sizefactors
 
+    @tf.function(experimental_compile=True)
+    def _do_test(self, rawy, alpha, mu):
         W = mu / (1 + alpha * mu)
+        stat = 0.5 * tf.reduce_sum(
+            (rawy / mu - 1) * W * tf.tensordot(self._K, W * (rawy / mu - 1), axes=(-1, -1)), axis=-1
+        )
 
-        stat = 0.5 * np.sum((rawy / mu - 1) * W * np.dot(K, W * (rawy / mu - 1)))
-
-        P = np.diag(W) - W[:, np.newaxis] * W[np.newaxis, :] / np.sum(W)
-        PK = W[:, np.newaxis] * K - W[:, np.newaxis] * ((W[np.newaxis, :] @ K) / np.sum(W))
-        trace_PK = np.trace(PK)
+        P = tf.linalg.diag(W) - W[:, tf.newaxis] * W[tf.newaxis, :] / tf.reduce_sum(W)
+        PK = W[:, tf.newaxis] * self._K - W[:, tf.newaxis] * (
+            (W[tf.newaxis, :] @ self._K) / tf.reduce_sum(W)
+        )
+        trace_PK = tf.linalg.trace(PK)
         e_tilde = 0.5 * trace_PK
-        I_tau_tau = 0.5 * np.sum(PK * PK)
-        I_tau_theta = 0.5 * np.sum(PK * P)
-        I_theta_theta = 0.5 * np.sum(np.square(P))
-        I_tau_tau_tilde = I_tau_tau - np.square(I_tau_theta) / I_theta_theta
+        I_tau_tau = 0.5 * tf.reduce_sum(PK * PK, axis=(-2, -1))
+        I_tau_theta = 0.5 * tf.reduce_sum(PK * P, axis=(-2, -1))
+        I_theta_theta = 0.5 * tf.reduce_sum(tf.square(P), axis=(-2, -1))
+        I_tau_tau_tilde = I_tau_tau - tf.square(I_tau_theta) / I_theta_theta
 
-        return self._calc_test(stat, e_tilde, I_tau_tau_tilde)
+        return stat, e_tilde, I_tau_tau_tilde
 
-    def _moments_dispersion_estimate(self, y=None):
+    @tf.function(experimental_compile=True)
+    def _moments_dispersion_estimate(self, y):
         """
         This is lifted from the first DESeq paper
         """
-        if y is None:
-            y = self.model.rawy / self.sizefactors
-        v = np.var(y)
-        m = np.mean(y)
-        s = np.mean(1 / self.sizefactors)
-        return (v - s * m) / np.square(m)
+        v = tf.math.reduce_variance(y)
+        m = tf.reduce_mean(y)
+        s = tf.reduce_mean(1 / self.sizefactors)
+        return (v - s * m) / tf.square(m)
 
     @staticmethod
+    @tf.function(experimental_compile=True)
     def _negative_negbinom_loglik(params, counts, sizefactors):
         logmu = params[0]
         logalpha = params[1]
-        mus = np.exp(logmu) * sizefactors
-        nexpalpha = np.exp(-logalpha)
+        mus = tf.exp(logmu) * sizefactors
+        nexpalpha = tf.exp(-logalpha)
         ct_plus_alpha = counts + nexpalpha
-        return -np.sum(
-            loggamma(ct_plus_alpha)
-            - loggamma(nexpalpha)
-            - ct_plus_alpha * np.log(1 + np.exp(logalpha) * mus)
+        return -tf.reduce_sum(
+            tf.math.lgamma(ct_plus_alpha)
+            - tf.math.lgamma(nexpalpha)
+            - ct_plus_alpha * tf.math.log(1 + tf.exp(logalpha) * mus)
             + counts * logalpha
-            + counts * np.log(mus)
-            - loggamma(counts + 1)
+            + counts * tf.math.log(mus)
+            - tf.math.lgamma(counts + 1)
         )
 
     @staticmethod
+    @tf.function(experimental_compile=True)
     def _grad_negative_negbinom_loglik(params, counts, sizefactors):
         logmu = params[0]
         logalpha = params[1]
-        mu = np.exp(logmu)
+        mu = tf.exp(logmu)
         mus = mu * sizefactors
-        nexpalpha = np.exp(-logalpha)
-        one_alpha_mu = 1 + np.exp(logalpha) * mus
-        grad = np.empty((2,))
-        grad[0] = np.sum((counts - mus) / one_alpha_mu)  # d/d_mu
-        grad[1] = np.sum(
-            nexpalpha * (digamma(nexpalpha) - digamma(counts + nexpalpha) + np.log(one_alpha_mu))
+        nexpalpha = tf.exp(-logalpha)
+        one_alpha_mu = 1 + tf.exp(logalpha) * mus
+
+        grad0 = tf.reduce_sum((counts - mus) / one_alpha_mu)  # d/d_mu
+        grad1 = tf.reduce_sum(
+            nexpalpha
+            * (
+                tf.math.digamma(nexpalpha)
+                - tf.math.digamma(counts + nexpalpha)
+                + tf.math.log(one_alpha_mu)
+            )
             + (counts - mus) / one_alpha_mu
         )  # d/d_alpha
-        return -grad
+        return -tf.convert_to_tensor((grad0, grad1))
