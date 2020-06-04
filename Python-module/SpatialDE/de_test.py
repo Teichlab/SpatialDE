@@ -2,7 +2,7 @@ import logging
 from time import time
 import warnings
 from itertools import zip_longest
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union, List
 
 import numpy as np
 import pandas as pd
