@@ -13,7 +13,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'numpy', 'scipy >= 1.0', 'pandas>=1.0', 'tqdm',
-        'NaiveDE', 'Click', 'gpflow >= 2.0'
+        'Click', 'gpflow >= 2.0', "anndata >= 0.7", "NaiveDE"
     ],
     entry_points=dict(
         console_scripts=['spatialde=SpatialDE.scripts.spatialde_cli:main'],

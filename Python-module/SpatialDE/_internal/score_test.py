@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -9,7 +9,7 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 from scipy.optimize import minimize
 
-from .kernels import Kernel
+from ..kernels import Kernel
 
 from enum import Enum, auto
 import math
@@ -55,31 +55,36 @@ def combine_pvalues(
 
 
 class ScoreTest(metaclass=ABCMeta):
+    dtype = tf.float64  # use single precision for better performance
+
+    @dataclass
+    class NullModel(metaclass=ABCMeta):
+        pass
+
     def __init__(
-        self,
-        X: tf.Tensor,
-        Y: tf.Tensor,
-        rawY: tf.Tensor,
-        omnibus: bool = False,
-        kernel: Optional[Union[Kernel, List[Kernel]]] = None,
+        self, omnibus: bool = False, kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
-        self.dtype = tf.float64  # use single precision for better performance
         self.omnibus = omnibus
-        self.X = X
-        self.Y = Y
-        self.rawY = rawY
-        if self.Y is not None:
-            self.Y = tf.cast(self.Y, self.dtype)
-        if self.rawY is not None:
-            self.rawY = tf.cast(self.rawY, self.dtype)
-        self.n = tf.shape(X)[0]
+
+        self.n = None
 
         if kernel is not None:
             self.kernel = kernel
 
-    def __call__(self, i) -> ScoreTestResults:
-        stat, e_tilde, I_tau_tau = self._test(i)
-        return self._calc_test(stat, e_tilde, I_tau_tau)
+    def __call__(
+        self, y: tf.Tensor, nullmodel: Optional[NullModel] = None
+    ) -> Tuple[ScoreTestResults, NullModel]:
+        y = tf.squeeze(y)
+        if self.yidx is not None:
+            y = tf.gather(y, self.yidx)
+        if y.dtype is not self.dtype:
+            raise TypeError(
+                f"Value vector has wrong dtype. Expected: {repr(self.dtype)}, given: {repr(rawy.dtype)}"
+            )
+        if nullmodel is None:
+            nullmodel = self._fit_null(y)
+        stat, e_tilde, I_tau_tau = self._test(y, nullmodel)
+        return self._calc_test(stat, e_tilde, I_tau_tau), nullmodel
 
     @property
     def kernel(self) -> List[Kernel]:
@@ -90,17 +95,24 @@ class ScoreTest(metaclass=ABCMeta):
         self._kernel = [kernel] if isinstance(kernel, Kernel) else kernel
         if len(self._kernel) > 1:
             if self.omnibus:
-                self._K = self._kernel[0].K(self.X)
+                self._K = self._kernel[0].K()
                 for k in self._kernel[1:]:
-                    self._K += k.K(self.X)
+                    self._K += k.K()
             else:
-                self._K = tf.stack([k.K(self.X) for k in kernel], axis=0)
+                self._K = tf.stack([k.K() for k in kernel], axis=0)
         else:
-            self._K = self._kernel[0].K(self.X)
+            self._K = self._kernel[0].K()
         self._K = tf.cast(self._K, self.dtype)
+        self.n = tf.shape(self._K)[0]
 
     @abstractmethod
-    def _test(self, i):
+    def _test(
+        self, y: tf.Tensor, nullmodel: NullModel
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        pass
+
+    @abstractmethod
+    def _fit_null(self, y: tf.Tensor) -> NullModel:
         pass
 
     @staticmethod
@@ -112,26 +124,36 @@ class ScoreTest(metaclass=ABCMeta):
 
 
 class NegativeBinomialScoreTest(ScoreTest):
+    @dataclass
+    class NullModel(ScoreTest.NullModel):
+        mu: tf.Tensor
+        alpha: tf.Tensor
+
     def __init__(
         self,
-        X: tf.Tensor,
-        Y: Optional[tf.Tensor],
-        rawY: tf.Tensor,
+        sizefactors: tf.Tensor,
         omnibus: bool = False,
         kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
-        super().__init__(X, Y, rawY, omnibus, kernel)
-        self._parameters_cache = {}
-        self.rawY = tf.cast(
-            rawY, tf.float64
+        self.sizefactors = tf.squeeze(
+            tf.convert_to_tensor(sizefactors, dtype=tf.float64)
         )  # we want float64 here, this greatly reduces the number of iterations for the MLE
-        self.sizefactors = tf.reduce_sum(self.rawY, axis=1) * 1e-3
+        if tf.rank(self.sizefactors) > 1:
+            raise ValueError("Size factors vector must have rank 1")
+
+        self._parameters_cache = {}
         yidx = tf.cast(tf.squeeze(tf.where(self.sizefactors > 0)), tf.int32)
         self.yidx = None
 
         if tf.shape(yidx)[0] != tf.shape(self.sizefactors)[0]:
             self.yidx = yidx
             self.sizefactors = tf.gather(self.sizefactors, self.yidx)
+        super().__init__(omnibus, kernel)
+
+    @ScoreTest.kernel.setter
+    def kernel(self, kernel: Union[Kernel, List[Kernel]]):
+        ScoreTest.kernel.fset(self, kernel)
+        if self.yidx is not None:
             x, y = tf.meshgrid(self.yidx, self.yidx)
             idx = tf.reshape(tf.stack((y, x), axis=2), (-1, 2))
             if tf.size(tf.shape(self._K)) > 2:
@@ -152,36 +174,40 @@ class NegativeBinomialScoreTest(ScoreTest):
                 )
             )
 
-    def _test(self, i):
-        rawy = self.rawY[:, i]
-        if self.yidx is not None:
-            rawy = tf.gather(rawy, self.yidx)
+    def _fit_null(self, y: tf.Tensor) -> NullModel:
+        scaledy = y / self.sizefactors
+        res = minimize(
+            self._negative_negbinom_loglik,
+            x0=[
+                tf.math.log(tf.reduce_mean(scaledy)),
+                tf.math.log(
+                    tf.maximum(1e-8, self._moments_dispersion_estimate(scaledy, self.sizefactors))
+                ),
+            ],
+            args=(y, self.sizefactors),
+            jac=self._grad_negative_negbinom_loglik,
+            method="bfgs",
+        )
+        mu = tf.exp(res.x[0]) * self.sizefactors
+        alpha = tf.exp(res.x[1])
+        return self.NullModel(mu, alpha)
 
-        try:
-            mu, alpha = self._parameters_cache[i]
-        except KeyError:
-            scaledy = rawy / self.sizefactors
-            res = minimize(
-                self._negative_negbinom_loglik,
-                x0=[
-                    tf.math.log(tf.reduce_mean(scaledy)),
-                    tf.math.log(tf.maximum(1e-8, self._moments_dispersion_estimate(scaledy))),
-                ],
-                args=(rawy, self.sizefactors),
-                jac=self._grad_negative_negbinom_loglik,
-                method="bfgs",
-            )
-            res.x = res.x
-            mu = tf.exp(res.x[0]) * self.sizefactors
-            alpha = tf.exp(res.x[1])
-            self._parameters_cache[i] = (mu, alpha)
+    def _test(
+        self, y: tf.Tensor, nullmodel: NullModel
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        if self.yidx is not None:
+            y = tf.gather(y, self.yidx)
 
         return self._do_test(
-            tf.cast(rawy, self.dtype), tf.cast(alpha, self.dtype), tf.cast(mu, self.dtype)
+            tf.cast(y, self.dtype),
+            tf.cast(nullmodel.alpha, self.dtype),
+            tf.cast(nullmodel.mu, self.dtype),
         )
 
     @tf.function(experimental_compile=True)
-    def _do_test(self, rawy, alpha, mu):
+    def _do_test(
+        self, rawy: tf.Tensor, alpha: tf.Tensor, mu: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         W = mu / (1 + alpha * mu)
         stat = 0.5 * tf.reduce_sum(
             (rawy / mu - 1) * W * tf.tensordot(self._K, W * (rawy / mu - 1), axes=(-1, -1)), axis=-1
@@ -200,14 +226,15 @@ class NegativeBinomialScoreTest(ScoreTest):
 
         return stat, e_tilde, I_tau_tau_tilde
 
+    @staticmethod
     @tf.function(experimental_compile=True)
-    def _moments_dispersion_estimate(self, y):
+    def _moments_dispersion_estimate(y, sizefactors):
         """
         This is lifted from the first DESeq paper
         """
         v = tf.math.reduce_variance(y)
         m = tf.reduce_mean(y)
-        s = tf.reduce_mean(1 / self.sizefactors)
+        s = tf.reduce_mean(1 / sizefactors)
         return (v - s * m) / tf.square(m)
 
     @staticmethod

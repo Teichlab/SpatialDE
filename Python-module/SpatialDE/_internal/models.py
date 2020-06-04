@@ -8,25 +8,9 @@ from scipy import optimize
 from scipy.misc import derivative
 from scipy.stats import chi2
 
-from .kernels import Kernel
+from ..kernels import Kernel
 
-class TestableModel(metaclass=ABCMeta):
-    @property
-    @abstractmethod
-    def K(self) -> np.ndarray:
-        pass
-
-    @property
-    @abstractmethod
-    def y(self) -> np.ndarray:
-        pass
-
-    @property
-    @abstractmethod
-    def rawy(self) -> np.ndarray:
-        pass
-
-class Model(TestableModel):
+class Model():
     def __init__(self, X: np.ndarray, kernel: Kernel):
         self.X = X
         self.n = X.shape[0]
@@ -34,7 +18,6 @@ class Model(TestableModel):
 
         self._K = None
         self._y = None
-        self._rawy = None
 
     def _reset(self):
         pass
@@ -98,17 +81,9 @@ class Model(TestableModel):
     def y(self) -> np.ndarray:
         return self._y
 
-    @property
-    def rawy(self) -> np.ndarray:
-        return self._rawy
-
-    @rawy.setter
-    def rawy(self, ny:np.ndarray):
-        self._rawy = ny
-
-    def sety(self, y: np.ndarray, rawy: np.ndarray):
-        self._y = y
-        self._rawy = rawy
+    @y.setter
+    def y(self, newy: np.ndarray):
+        self._y = newy
         self._reset()
         self._ychanged()
 

@@ -9,9 +9,8 @@ import pandas as pd
 import gpflow
 import tensorflow as tf
 
-from .util import SGPIPM, GP, GPControl, get_dtype, bh_adjust
+from .models import Model
 from .sm_kernel import *
-from .models import TestableModel
 
 
 class Linear(gpflow.kernels.Linear):
@@ -58,10 +57,6 @@ class GeneGPModel(metaclass=ABCMeta):
     def freeze(self):
         pass
 
-    @property
-    def rawy(self):
-        return self._rawy.numpy()
-
     @staticmethod
     def mixture_kernel(X, Y, ncomponents=5, ard=True, minvar=1e-3):
         range = tf.reduce_min(tf.reduce_max(X, axis=0) - tf.reduce_min(X, axis=0))
@@ -96,14 +91,12 @@ class GPR(gpflow.models.GPR, GeneGPModel):
         self,
         X: np.ndarray,
         Y: np.ndarray,
-        rawY: np.ndarray,
         n_kernel_components: int = 5,
         ard: bool = True,
         minvar: float = 1e-3,
     ):
         kern = self.mixture_kernel(X, Y, n_kernel_components, ard, minvar)
         super().__init__(data=[X, Y], kernel=kern, mean_function=gpflow.mean_functions.Constant())
-        self._rawy = rawY
 
     def freeze(self):
         X = self.data[0]
@@ -118,7 +111,6 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
         self,
         X: np.ndarray,
         Y: np.ndarray,
-        rawY: np.ndarray,
         inducing_variable: Union[np.ndarray, gpflow.inducing_variables.InducingPoints],
         n_kernel_components: int = 5,
         ard: bool = True,
@@ -132,7 +124,6 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
             mean_function=gpflow.mean_functions.Constant(),
         )
 
-        self._rawy = rawY
 
     def freeze(self):
         X = self.data[0]
@@ -162,7 +153,7 @@ class Variance:
     var_fraction_variance: VarPart
 
 
-class GeneGP(TestableModel):
+class GeneGP(Model):
     def __init__(self, model: GeneGPModel, minimize_fun, *args, **kwargs):
         self.model = model
 
@@ -199,10 +190,6 @@ class GeneGP(TestableModel):
     @property
     def y(self):
         return tf.squeeze(self.model.data[1]).numpy()
-
-    @property
-    def rawy(self):
-        return tf.squeeze(self.model.rawy).numpy()
 
     def predict_mean(self, X=None):
         if X is None:

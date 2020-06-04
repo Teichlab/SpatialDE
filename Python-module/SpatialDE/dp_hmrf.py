@@ -1,13 +1,18 @@
-import tensorflow as tf
-from gpflow.utilities.ops import square_distance
-
-import numpy as np
-import pandas as pd
-
 from typing import Optional, List, Union
 from dataclasses import dataclass
 from enum import Enum, auto
 import logging
+import warnings
+
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from gpflow.utilities.ops import square_distance
+
+from anndata import AnnData
+
+from ._internal.util import calc_sizefactors
+
 
 @dataclass(frozen=True)
 class TissueSegmentationParameters:
@@ -24,10 +29,16 @@ class TissueSegmentationParameters:
     eta_2: float = 1e-6
 
     def __post_init__(self):
-        assert self.nclasses is None or self.nclasses >= 1, "Number of classes must be None or at least 1"
-        assert self.neighbors is None or self.neighbors >= 0, "Number of neighbors must be None or at least 0"
+        assert (
+            self.nclasses is None or self.nclasses >= 1
+        ), "Number of classes must be None or at least 1"
+        assert (
+            self.neighbors is None or self.neighbors >= 0
+        ), "Number of neighbors must be None or at least 0"
         assert self.smoothness_factor > 0, "Smoothness factor must be greater than 0"
-        assert self.class_prune_threshold >= 0 and self.class_prune_threshold <= 1, "Class pruning threshold must be between 0 and 1"
+        assert (
+            self.class_prune_threshold >= 0 and self.class_prune_threshold <= 1
+        ), "Class pruning threshold must be between 0 and 1"
         assert self.abstol > 0, "Absolute tolerance must be greater than 0"
         assert self.reltol > 0, "Relative tolerance must be greater than 0"
         assert self.maxiter >= 1, "Maximum number of iterations must be greater than or equal to 1"
@@ -146,13 +157,13 @@ def _segment(
         p_x_neighborhood
         + vhat3_cumsum[:, tf.newaxis]
         + vhat2[:, tf.newaxis]
-        + lambdahat_2 @ counts
+        + tf.matmul(lambdahat_2, counts, transpose_b=True)
         - sizefactors * tf.reduce_sum(lambdahat_1, axis=1, keepdims=True)
     )
     pihat = tf.nn.softmax(phi, axis=0)
     pihat_cumsum = tf.cumsum(pihat, axis=0, reverse=True) - pihat
 
-    gammahat_1 = gamma_1 + tf.matmul(pihat, counts, transpose_b=True)
+    gammahat_1 = gamma_1 + pihat @ counts
     gammahat_2 = gamma_2 + tf.matmul(pihat, sizefactors, transpose_b=True)
     etahat_2 = eta_2 - vhat3_sum
     alphahat_1 = 1 + ngenes * tf.reduce_sum(pihat, axis=1)
@@ -173,57 +184,88 @@ def _segment(
 
 
 def tissue_segmentation(
-    X: Optional[pd.DataFrame],
-    counts: pd.DataFrame,
-    genes: List[str],
+    adata: AnnData,
+    genes: Optional[List[str]] = None,
+    sizefactors: Optional[np.ndarray] = None,
+    spatial_key="spatial",
     params: TissueSegmentationParameters = TissueSegmentationParameters(),
     labels: Optional[Union[np.ndarray, tf.Tensor]] = None,
     rng: np.random.Generator = np.random.default_rng(),
+    copy=False,
 ):
+    if genes is None and sizefactors is None:
+        warnings.warn(
+            "Neither genes nor sizefactors are given. Assuming that adata contains complete data set, will calculate size factors and perform segmentation using the complete data set.",
+            RuntimeWarning,
+        )
+
+    if sizefactors is None:
+        sizefactors = calc_sizefactors(adata)
+    if genes is not None:
+        ngenes = len(genes)
+        data = adata[:, genes]
+    else:
+        ngenes = adata.n_vars
+        data = adata
+    try:
+        X = data.obsm[spatial_key]
+    except KeyError:
+        X = None
+
     dtype = tf.float64
     labels_dtype = tf.int32
     nclasses = params.nclasses
-    nsamples = counts.shape[0]
+    nsamples = data.n_obs
     if nclasses is None:
         nclasses = tf.cast(
             tf.math.ceil(tf.sqrt(tf.convert_to_tensor(nsamples, dtype=tf.float32))), tf.int32
         )
-    ngenes = len(genes)
     fngenes = tf.convert_to_tensor(ngenes, dtype=dtype)
+
+    sizefactors = tf.convert_to_tensor(sizefactors[np.newaxis, :], dtype=dtype)
+    X = tf.convert_to_tensor(X, dtype=dtype)
 
     gamma_1 = tf.convert_to_tensor(params.gamma_1, dtype=dtype)
     gamma_2 = tf.convert_to_tensor(params.gamma_2, dtype=dtype)
     eta_1 = tf.convert_to_tensor(params.eta_1, dtype=dtype)
     eta_2 = tf.convert_to_tensor(params.eta_2, dtype=dtype)
 
-    counts = tf.convert_to_tensor(counts[genes].to_numpy().T, dtype=dtype)
-    sizefactors = counts.sum(axis=0).to_numpy()[np.newaxis, :] * 1e-3
+    counts = tf.convert_to_tensor(data.X, dtype=dtype)
 
     distances = None
     if X is not None and (params.neighbors is None or params.neighbors > 0):
-        coords = tf.convert_to_tensor(X.to_numpy(), dtype=dtype)
-        distances = square_distance(coords, None)
+        distances = square_distance(X, None)
         if params.neighbors is not None and params.neighbors < nsamples:
             distances, indices = tf.math.top_k(-distances, k=params.neighbors + 1, sorted=True)
             distances = -distances[:, 1:]
             distances = 2 * params.smoothness_factor * tf.reduce_min(distances) / distances
             indices = indices[:, 1:]
             indices = tf.stack(
-                (tf.repeat(tf.range(distances.shape[0]), indices.shape[1]), tf.reshape(indices, -1)), axis=1
+                (
+                    tf.repeat(tf.range(distances.shape[0]), indices.shape[1]),
+                    tf.reshape(indices, -1),
+                ),
+                axis=1,
             )
             dists = tf.reshape(distances, -1)
             distances = tf.scatter_nd(indices, dists, (distances.shape[0], distances.shape[0]))
-            distances = tf.tensor_scatter_nd_update(distances, indices[:, ::-1], dists)  # symmetrize
+            distances = tf.tensor_scatter_nd_update(
+                distances, indices[:, ::-1], dists
+            )  # symmetrize
         else:
-            distances = tf.linalg.set_diag(distances, tf.repeat(tf.convert_to_tensor(np.inf, dtype), tf.shape(distances)[0]))
+            logging.info("Not using spatial information, fitting Poisson mixture model instead.")
+            distances = tf.linalg.set_diag(
+                distances, tf.repeat(tf.convert_to_tensor(np.inf, dtype), tf.shape(distances)[0])
+            )
             distances = 2 * params.smoothness_factor * tf.reduce_min(distances) / distances
 
     if labels is not None:
         labels = tf.squeeze(tf.convert_to_tensor(labels, dtype=labels_dtype))
         if tf.rank(labels) > 1 or tf.shape(labels)[0] != nsamples:
             labels = None
-            logging.warning(
-                "Shape of given labels does not conform to data. Initializing with random labels."
+            warnings.warn(
+                "Shape of given labels does not conform to data. Initializing with random labels.",
+                RuntimeWarning,
             )
     if labels is None and distances is not None:
         labels = tf.convert_to_tensor(rng.choice(nclasses, nsamples), dtype=labels_dtype)
@@ -289,15 +331,29 @@ def tissue_segmentation(
     pihat = tf.linalg.normalize(tf.gather(pihat, idx, axis=0), ord=1, axis=0)[0]
     gammahat_1 = tf.gather(gammahat_1, idx, axis=0)
     gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
-    return TissueSegmentation(
-        converged,
-        status,
-        labels.numpy(),
-        pihat.numpy(),
-        gammahat_1.numpy(),
-        gammahat_2.numpy(),
-        i,
-        np.asarray(pruneidx),
-        np.asarray(elbos),
-        np.asarray(nclassestrace),
+
+    ret_data = None
+    if copy:
+        adata = adata.copy()
+        toreturn = adata
+    else:
+        toreturn = None
+    labels = labels.numpy()
+    pihat = pihat.numpy().T
+    adata.obs["segmentation_labels"] = labels
+    adata.obsm["segmentation_class_probabilities"] = pihat
+    return (
+        TissueSegmentation(
+            converged,
+            status,
+            labels,
+            pihat,
+            gammahat_1.numpy(),
+            gammahat_2.numpy(),
+            i,
+            np.asarray(pruneidx),
+            np.asarray(elbos),
+            np.asarray(nclassestrace),
+        ),
+        toreturn,
     )
