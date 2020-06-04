@@ -62,12 +62,14 @@ class ScoreTest(metaclass=ABCMeta):
         pass
 
     def __init__(
-        self, omnibus: bool = False, kernel: Optional[Union[Kernel, List[Kernel]]] = None,
+        self,
+        omnibus: bool = False,
+        kernel: Optional[Union[Kernel, List[Kernel]]] = None,
+        yidx: Optional[tf.Tensor] = None,
     ):
+        self._yidx = yidx
         self.omnibus = omnibus
-
         self.n = None
-
         if kernel is not None:
             self.kernel = kernel
 
@@ -75,8 +77,8 @@ class ScoreTest(metaclass=ABCMeta):
         self, y: tf.Tensor, nullmodel: Optional[NullModel] = None
     ) -> Tuple[ScoreTestResults, NullModel]:
         y = tf.squeeze(y)
-        if self.yidx is not None:
-            y = tf.gather(y, self.yidx)
+        if self._yidx is not None:
+            y = tf.gather(y, self._yidx)
         if y.dtype is not self.dtype:
             raise TypeError(
                 f"Value vector has wrong dtype. Expected: {repr(self.dtype)}, given: {repr(rawy.dtype)}"
@@ -104,6 +106,27 @@ class ScoreTest(metaclass=ABCMeta):
             self._K = self._kernel[0].K()
         self._K = tf.cast(self._K, self.dtype)
         self.n = tf.shape(self._K)[0]
+
+        if self._yidx is not None:
+            x, y = tf.meshgrid(self._yidx, self._yidx)
+            idx = tf.reshape(tf.stack((y, x), axis=2), (-1, 2))
+            if tf.size(tf.shape(self._K)) > 2:
+                bdim = tf.shape(self._K)[0]
+                idx = tf.tile(idx, (bdim, 1))
+                idx = tf.concat(
+                    (
+                        tf.repeat(
+                            tf.range(bdim, dtype=self._yidx.dtype), tf.square(tf.size(self._yidx))
+                        )[:, tf.newaxis],
+                        idx,
+                    ),
+                    axis=1,
+                )
+            self._K = tf.squeeze(
+                tf.reshape(
+                    tf.gather_nd(self._K, idx), (-1, tf.size(self._yidx), tf.size(self._yidx)),
+                )
+            )
 
     @abstractmethod
     def _test(
@@ -141,38 +164,12 @@ class NegativeBinomialScoreTest(ScoreTest):
         if tf.rank(self.sizefactors) > 1:
             raise ValueError("Size factors vector must have rank 1")
 
-        self._parameters_cache = {}
         yidx = tf.cast(tf.squeeze(tf.where(self.sizefactors > 0)), tf.int32)
-        self.yidx = None
-
         if tf.shape(yidx)[0] != tf.shape(self.sizefactors)[0]:
-            self.yidx = yidx
-            self.sizefactors = tf.gather(self.sizefactors, self.yidx)
-        super().__init__(omnibus, kernel)
-
-    @ScoreTest.kernel.setter
-    def kernel(self, kernel: Union[Kernel, List[Kernel]]):
-        ScoreTest.kernel.fset(self, kernel)
-        if self.yidx is not None:
-            x, y = tf.meshgrid(self.yidx, self.yidx)
-            idx = tf.reshape(tf.stack((y, x), axis=2), (-1, 2))
-            if tf.size(tf.shape(self._K)) > 2:
-                bdim = tf.shape(self._K)[0]
-                idx = tf.tile(idx, (bdim, 1))
-                idx = tf.concat(
-                    (
-                        tf.repeat(
-                            tf.range(bdim, dtype=self.yidx.dtype), tf.square(tf.size(self.yidx))
-                        )[:, tf.newaxis],
-                        idx,
-                    ),
-                    axis=1,
-                )
-            self._K = tf.squeeze(
-                tf.reshape(
-                    tf.gather_nd(self._K, idx), (-1, tf.size(self.yidx), tf.size(self.yidx)),
-                )
-            )
+            self.sizefactors = tf.gather(self.sizefactors, yidx)
+        else:
+            yidx = None
+        super().__init__(omnibus, kernel, yidx)
 
     def _fit_null(self, y: tf.Tensor) -> NullModel:
         scaledy = y / self.sizefactors
@@ -195,9 +192,6 @@ class NegativeBinomialScoreTest(ScoreTest):
     def _test(
         self, y: tf.Tensor, nullmodel: NullModel
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-        if self.yidx is not None:
-            y = tf.gather(y, self.yidx)
-
         return self._do_test(
             tf.cast(y, self.dtype),
             tf.cast(nullmodel.alpha, self.dtype),
