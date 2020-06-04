@@ -16,7 +16,7 @@ from anndata import AnnData
 
 from .kernels import SquaredExponential, Cosine, Linear
 from ._internal.models import Model, Constant, Null, model_factory
-from ._internal.util import DistanceCache, default_kernel_space, kspace_walk, calc_sizefactors
+from ._internal.util import DistanceCache, default_kernel_space, kspace_walk, calc_sizefactors, dense_slice
 from ._internal.tf_dataset import AnnDataDataset
 from ._internal.gpflow_helpers import *
 
@@ -63,7 +63,7 @@ def fit_model(model: Model, genes: Union[List[str], np.ndarray], counts: np.ndar
         warnings.simplefilter("ignore", RuntimeWarning)
         with model:
             for i, gene in enumerate(tqdm(genes)):
-                y = counts[:, i]
+                y = dense_slice(counts[:, i])
                 model.y = y
                 t0 = time()
 
@@ -135,7 +135,7 @@ def fit_detailed(
             model = GPR(
                 X,
                 Y=tf.convert_to_tensor(
-                    counts[:, g, np.newaxis],
+                    dense_slice(counts[:, g])[:, np.newaxis],
                     dtype=gpflow.config.default_float(),
                 ),
                 n_kernel_components=control.ncomponents,
@@ -170,7 +170,7 @@ def fit_detailed(
             model = SGPR(
                 X,
                 Y=tf.constant(
-                    counts[:, g, np.newaxis],
+                    dense_slice(counts[:, g])[:, np.newaxis],
                     dtype=gpflow.config.default_float(),
                 ),
                 inducing_variable=inducers,

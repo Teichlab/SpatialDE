@@ -71,10 +71,10 @@ def test(
             for i, (y, g) in AnnDataDataset(adata, dtype=test.dtype).enumerate():
                 i = i.numpy()
                 g = g.numpy().decode("utf-8")
-                pbar.update()
                 t0 = time()
                 result, _ = test(y)
                 t = time() - t0
+                pbar.update()
                 res = {"gene": g, "time": t}
                 resultdict = result.to_dict()
                 if omnibus:

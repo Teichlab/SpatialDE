@@ -26,14 +26,28 @@ def scaled_squared_distance(
 ):
     return square_distance(scale(X, lengthscale), scale(Y, lengthscale))
 
-class Kernel:
+class Kernel(metaclass=ABCMeta):
     def __init__(self, cache: DistanceCache):
         self._cache = cache
 
-    def K(self, X: tf.Tensor, Y: Optional[tf.Tensor] = None):
-        pass
+    def K(self, X: Optional[tf.Tensor] = None, Y: Optional[tf.Tensor] = None):
+        if X is not None:
+            X = tf.cast(X, self._cache.dtype)
+        if Y is not None:
+            Y = tf.cast(Y, self._cache.dtype)
+        return self._K(X, Y)
 
     def K_diag(self, X: tf.Tensor):
+        if X is not None:
+            X = tf.cast(X, self._cache.dtype)
+        return self._K_diag(X)
+
+    @abstractmethod
+    def _K(self, X:tf.Tensor, Y:Optional[tf.Tensor]=None):
+        pass
+
+    @abstractmethod
+    def _K_diag(self, X: tf.Tensor):
         pass
 
 
@@ -44,7 +58,7 @@ class StationaryKernel(Kernel):
 
 
 class SquaredExponential(StationaryKernel):
-    def K(self, X: Optional[tf.Tensor] = None, Y: Optional[tf.Tensor] = None):
+    def _K(self, X: Optional[tf.Tensor] = None, Y: Optional[tf.Tensor] = None):
         if X is None and Y is not None:
             X, Y = Y, X
         if (X is None or X is self._cache.X) and Y is None:
@@ -53,12 +67,12 @@ class SquaredExponential(StationaryKernel):
             dist = scaled_squared_distance(X, Y, self.lengthscale)
         return tf.exp(-0.5 * dist)
 
-    def K_diag(self, X: tf.Tensor):
-        return tf.repeat(1, X.shape[0])
+    def _K_diag(self, X: tf.Tensor):
+        return tf.repeat(tf.convert_to_tensor(1, dtype=X.dtype), X.shape[0])
 
 
 class Cosine(StationaryKernel):
-    def K(
+    def _K(
         self, X: Optional[tf.Tensor] = None, Y: Optional[tf.Tensor] = None,
     ):
         if X is None and Y is not None:
@@ -69,15 +83,15 @@ class Cosine(StationaryKernel):
             dist = tf.reduce_sum(scaled_difference_matrix(X, Y, self.lengthscale), axis=-1)
         return tf.cos(2 * math.pi * dist)
 
-    def K_diag(self, X: tf.Tensor):
-        return tf.repeat(1, X.shape[0])
+    def _K_diag(self, X: tf.Tensor):
+         return tf.repeat(tf.convert_to_tensor(1, dtype=X.dtype), X.shape[0])
 
 
 class Linear(Kernel):
-    def K(self, X: tf.Tensor, Y: Optional[tf.Tensor] = None):
+    def _K(self, X: tf.Tensor, Y: Optional[tf.Tensor] = None):
         if Y is None:
             Y = X
         return tf.sum(X[:, tf.newaxis, :] * Y[tf.newaxis, ...], axis=-1)
 
-    def K_diag(self, X: tf.Tensor):
+    def _K_diag(self, X: tf.Tensor):
         return tf.sum(tf.square(X), axis=-1)

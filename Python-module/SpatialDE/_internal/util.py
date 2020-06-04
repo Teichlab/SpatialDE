@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.sparse import issparse
 import pandas as pd
 import tensorflow as tf
 
@@ -18,6 +19,11 @@ def get_dtype(df: pd.DataFrame, msg="Data frame"):
         logging.warning("%s has more than one dtype, selecting the first one" % msg)
     return dtys[0]
 
+def dense_slice(slice):
+    if issparse(slice):
+        slice = slice.toarray()
+    return np.squeeze(slice)
+
 
 def bh_adjust(pvals):
     order = np.argsort(pvals)
@@ -28,7 +34,7 @@ def bh_adjust(pvals):
 
 
 def calc_sizefactors(adata: AnnData):
-    return np.sum(adata.X, axis=1)
+    return adata.X.sum(axis=1).squeeze()
 
 
 def get_l_limits(cache: DistanceCache):

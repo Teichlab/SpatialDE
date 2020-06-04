@@ -11,7 +11,7 @@ from gpflow.utilities.ops import square_distance
 
 from anndata import AnnData
 
-from ._internal.util import calc_sizefactors
+from ._internal.util import calc_sizefactors, dense_slice
 
 
 @dataclass(frozen=True)
@@ -230,7 +230,7 @@ def tissue_segmentation(
     eta_1 = tf.convert_to_tensor(params.eta_1, dtype=dtype)
     eta_2 = tf.convert_to_tensor(params.eta_2, dtype=dtype)
 
-    counts = tf.convert_to_tensor(data.X, dtype=dtype)
+    counts = tf.convert_to_tensor(dense_slice(data.X), dtype=dtype)
 
     distances = None
     if X is not None and (params.neighbors is None or params.neighbors > 0):

@@ -1,6 +1,7 @@
 from typing import List, Optional, Union
 
 import numpy as np
+from scipy.sparse import issparse
 import tensorflow as tf
 
 from anndata import AnnData
@@ -31,12 +32,14 @@ class AnnDataIterator:
         for g in self.genes:
             slice = self.adata[:, g]
             if self.layer is None:
-                data = np.squeeze(slice.X)
+                data = slice.X
             else:
-                data = np.squeeze(slice.layers[self.layer])
+                data = slice.layers[self.layer]
+            if issparse(data):
+                data = data.toarray()
             with tf.device(tf.DeviceSpec(device_type="CPU").to_string()):
                 gene = tf.convert_to_tensor(g)
-            yield tf.convert_to_tensor(data, dtype=self.output_types[0]), gene
+            yield tf.convert_to_tensor(np.squeeze(data), dtype=self.output_types[0]), gene
 
 
 class AnnDataDataset(tf.data.Dataset):
