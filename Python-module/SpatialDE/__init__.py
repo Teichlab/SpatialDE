@@ -8,6 +8,7 @@ from .dp_hmrf import (
     TissueSegmentationStatus,
     TissueSegmentation,
 )
+from .io import read_spaceranger
 
 import tensorflow as tf
 
