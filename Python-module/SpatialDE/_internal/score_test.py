@@ -193,24 +193,24 @@ class NegativeBinomialScoreTest(ScoreTest):
         self, y: tf.Tensor, nullmodel: NullModel
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         return self._do_test(
+            self._K,
             tf.cast(y, self.dtype),
             tf.cast(nullmodel.alpha, self.dtype),
             tf.cast(nullmodel.mu, self.dtype),
         )
 
+    @staticmethod
     @tf.function(experimental_compile=True)
     def _do_test(
-        self, rawy: tf.Tensor, alpha: tf.Tensor, mu: tf.Tensor
+        K: tf.Tensor, rawy: tf.Tensor, alpha: tf.Tensor, mu: tf.Tensor
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         W = mu / (1 + alpha * mu)
         stat = 0.5 * tf.reduce_sum(
-            (rawy / mu - 1) * W * tf.tensordot(self._K, W * (rawy / mu - 1), axes=(-1, -1)), axis=-1
+            (rawy / mu - 1) * W * tf.tensordot(K, W * (rawy / mu - 1), axes=(-1, -1)), axis=-1
         )
 
         P = tf.linalg.diag(W) - W[:, tf.newaxis] * W[tf.newaxis, :] / tf.reduce_sum(W)
-        PK = W[:, tf.newaxis] * self._K - W[:, tf.newaxis] * (
-            (W[tf.newaxis, :] @ self._K) / tf.reduce_sum(W)
-        )
+        PK = W[:, tf.newaxis] * K - W[:, tf.newaxis] * ((W[tf.newaxis, :] @ K) / tf.reduce_sum(W))
         trace_PK = tf.linalg.trace(PK)
         e_tilde = 0.5 * trace_PK
         I_tau_tau = 0.5 * tf.reduce_sum(PK * PK, axis=(-2, -1))
