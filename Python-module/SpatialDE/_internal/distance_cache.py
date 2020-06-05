@@ -1,22 +1,23 @@
 import tensorflow as tf
+from gpflow import default_float
+from gpflow.utilities import to_default_float
 from gpflow.utilities.ops import square_distance, difference_matrix
 
 class DistanceCache:
-    dtype = tf.float64
     def __init__(self, X: tf.Tensor):
-        self.X = tf.convert_to_tensor(X, dtype=self.dtype)
+        self.X = X
         self._squaredEuclidean = None
         self._sumDiff = None
 
     @property
     def squaredEuclideanDistance(self):
         if self._squaredEuclidean is None:
-            self._squaredEuclidean = square_distance(tf.cast(self.X, dtype=self.dtype), None)
+            self._squaredEuclidean = square_distance(to_default_float(self.X), None)
         return self._squaredEuclidean
 
     @property
     def sumOfDifferences(self):
         if self._sumDiff is None:
-            self._sumDiff = tf.reduce_sum(difference_matrix(tf.cast(self.X, dtype=self.dtype), None), axis=-1)
+            self._sumDiff = tf.reduce_sum(difference_matrix(to_default_float(self.X), None), axis=-1)
         return self._sumDiff
 
