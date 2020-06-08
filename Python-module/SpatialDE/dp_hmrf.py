@@ -146,13 +146,12 @@ def _segment(
     lambdahat_2 = tf.math.digamma(gammahat_1) - tf.math.log(gammahat_2)
     alpha12 = alphahat_1 + alphahat_2
     dgalpha = tf.math.digamma(alpha12)
-    vhat1 = alphahat_1 / alpha12
-    vhat2 = tf.math.digamma(alphahat_1) - dgalpha
-    vhat3 = tf.math.digamma(alphahat_2) - dgalpha
+    vhat2 = tf.concat((tf.math.digamma(alphahat_1) - dgalpha, (0,)), axis=0)
+    vhat3 = tf.concat((tf.math.digamma(alphahat_2) - dgalpha, (0,)), axis=0)
     alphahat = eta_1_nclasses / etahat_2
 
     vhat3_cumsum = tf.cumsum(vhat3) - vhat3
-    vhat3_sum = tf.reduce_sum(vhat3[:-1])
+    vhat3_sum = tf.reduce_sum(vhat3)
     phi = (
         p_x_neighborhood
         + vhat3_cumsum[:, tf.newaxis]
@@ -166,8 +165,8 @@ def _segment(
     gammahat_1 = gamma_1 + pihat @ counts
     gammahat_2 = gamma_2 + tf.matmul(pihat, sizefactors, transpose_b=True)
     etahat_2 = eta_2 - vhat3_sum
-    alphahat_1 = 1 + ngenes * tf.reduce_sum(pihat, axis=1)
-    alphahat_2 = ngenes * tf.reduce_sum(pihat_cumsum, axis=1) + alphahat
+    alphahat_1 = 1 + ngenes * tf.reduce_sum(pihat, axis=1)[:-1]
+    alphahat_2 = ngenes * tf.reduce_sum(pihat_cumsum, axis=1)[:-1] + alphahat
 
     elbo = (
         (alphahat - 1) * vhat3_sum
@@ -271,8 +270,8 @@ def tissue_segmentation(
         labels = tf.convert_to_tensor(rng.choice(nclasses, nsamples), dtype=labels_dtype)
 
     eta_1_nclasses = eta_1 + tf.cast(nclasses, dtype=dtype)
-    alphahat_1 = tf.ones(shape=(nclasses,), dtype=dtype)
-    alphahat_2 = tf.ones(shape=(nclasses,), dtype=dtype)
+    alphahat_1 = tf.ones(shape=(nclasses - 1,), dtype=dtype)
+    alphahat_2 = tf.ones(shape=(nclasses - 1,), dtype=dtype)
     etahat_2 = eta_1_nclasses
     gammahat_1 = tf.fill((nclasses, ngenes), tf.convert_to_tensor(1e-6, dtype=dtype))
     gammahat_2 = tf.fill((nclasses, 1), tf.convert_to_tensor(1e-6, dtype=dtype))
@@ -320,8 +319,8 @@ def tissue_segmentation(
             idx, labels = _prune_components(labels, pihat, prune_threshold, everything=True)
             if tf.size(idx) < tf.shape(gammahat_1)[0]:
                 pruneidx.append(i)
-            alphahat_1 = tf.gather(alphahat_1, idx, axis=0)
-            alphahat_2 = tf.gather(alphahat_2, idx, axis=0)
+            alphahat_1 = tf.gather(alphahat_1, idx[:-1], axis=0)
+            alphahat_2 = tf.gather(alphahat_2, idx[:-1], axis=0)
             gammahat_1 = tf.gather(gammahat_1, idx, axis=0)
             gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
             nclasses = tf.size(idx)
