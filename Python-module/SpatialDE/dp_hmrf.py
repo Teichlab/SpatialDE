@@ -116,6 +116,7 @@ def _segment(
     sizefactors: tf.Tensor,
     distances: tf.Tensor,
     nclasses: tf.Tensor,
+    fnclasses: tf.Tensor,
     ngenes: tf.Tensor,
     labels: tf.Tensor,
     gamma_1: tf.Tensor,
@@ -128,7 +129,7 @@ def _segment(
     gammahat_1: tf.Tensor,
     gammahat_2: tf.Tensor,
 ):
-    eta_1_nclasses = eta_1 + tf.cast(nclasses, eta_1.dtype)
+    eta_1_nclasses = eta_1 + fnclasses
     if labels is not None and distances is not None:
         p_x_neighborhood = tf.TensorArray(counts.dtype, size=tf.shape(gammahat_1)[0])
         for c in tf.range(tf.shape(gammahat_1)[0]):
@@ -146,22 +147,23 @@ def _segment(
     lambdahat_2 = tf.math.digamma(gammahat_1) - tf.math.log(gammahat_2)
     alpha12 = alphahat_1 + alphahat_2
     dgalpha = tf.math.digamma(alpha12)
-    vhat2 = tf.concat((tf.math.digamma(alphahat_1) - dgalpha, (0,)), axis=0)
-    vhat3 = tf.concat((tf.math.digamma(alphahat_2) - dgalpha, (0,)), axis=0)
+    vhat2 = tf.math.digamma(alphahat_1) - dgalpha
+    vhat3 = tf.math.digamma(alphahat_2) - dgalpha
     alphahat = eta_1_nclasses / etahat_2
-
     vhat3_cumsum = tf.cumsum(vhat3) - vhat3
-    vhat3_sum = tf.reduce_sum(vhat3)
+
+    vhat_sum = tf.concat((vhat3_cumsum + vhat2, (0,)), axis=0)[:, tf.newaxis]
+
     phi = (
         p_x_neighborhood
-        + vhat3_cumsum[:, tf.newaxis]
-        + vhat2[:, tf.newaxis]
+        + vhat_sum
         + tf.matmul(lambdahat_2, counts, transpose_b=True)
         - sizefactors * tf.reduce_sum(lambdahat_1, axis=1, keepdims=True)
     )
     pihat = tf.nn.softmax(phi, axis=0)
     pihat_cumsum = tf.cumsum(pihat, axis=0, reverse=True) - pihat
 
+    vhat3_sum = tf.reduce_sum(vhat3)
     gammahat_1 = gamma_1 + pihat @ counts
     gammahat_2 = gamma_2 + tf.matmul(pihat, sizefactors, transpose_b=True)
     etahat_2 = eta_2 - vhat3_sum
@@ -169,15 +171,19 @@ def _segment(
     alphahat_2 = ngenes * tf.reduce_sum(pihat_cumsum, axis=1)[:-1] + alphahat
 
     elbo = (
-        (alphahat - 1) * vhat3_sum
-        + (eta_1_nclasses - 2) * (tf.math.lgamma(eta_1_nclasses) - tf.math.log(etahat_2))
+        tf.reduce_sum(pihat * p_x_neighborhood)
+        + tf.reduce_sum(pihat * (vhat_sum + tf.matmul(lambdahat_2, counts, transpose_b=True) - tf.reduce_sum(lambdahat_1, axis=1, keepdims=True) * sizefactors))
+        + tf.reduce_sum((alphahat - alphahat_2) * vhat3)
         + tf.reduce_sum((gamma_1 - gammahat_1) * lambdahat_2)
         + tf.reduce_sum((gammahat_2 - gamma_2) * lambdahat_1)
-        - eta_2 * alphahat
+        - tf.reduce_sum(pihat * phi)
         + tf.reduce_sum(tf.reduce_logsumexp(phi, axis=0))
         - tf.reduce_sum(gammahat_1 * tf.math.log(gammahat_2) - tf.math.lgamma(gammahat_1))
-        - tf.reduce_sum(tf.math.digamma(alphahat_1) - tf.math.digamma(alphahat_1 + alphahat_2))
-    )
+        - tf.reduce_sum((alphahat_1 - 1) * vhat2)
+        + tf.reduce_sum(tf.math.lbeta(tf.stack((alphahat_1, alphahat_2), axis=1)))
+        - (eta_1_nclasses) * tf.math.log(etahat_2)
+        + (etahat_2 - eta_2) * alphahat
+    ) / tf.cast(nclasses * ngenes * tf.shape(counts)[0], counts.dtype)
 
     return pihat, alphahat_1, alphahat_2, etahat_2, gammahat_1, gammahat_2, elbo
 
@@ -220,6 +226,7 @@ def tissue_segmentation(
             tf.math.ceil(tf.sqrt(tf.convert_to_tensor(nsamples, dtype=tf.float32))), tf.int32
         )
     fngenes = tf.convert_to_tensor(ngenes, dtype=dtype)
+    fnclasses = tf.convert_to_tensor(nclasses, dtype=dtype)
 
     sizefactors = tf.convert_to_tensor(sizefactors[np.newaxis, :], dtype=dtype)
     X = tf.convert_to_tensor(X, dtype=dtype)
@@ -269,10 +276,9 @@ def tissue_segmentation(
     if labels is None and distances is not None:
         labels = tf.convert_to_tensor(rng.choice(nclasses, nsamples), dtype=labels_dtype)
 
-    eta_1_nclasses = eta_1 + tf.cast(nclasses, dtype=dtype)
     alphahat_1 = tf.ones(shape=(nclasses - 1,), dtype=dtype)
     alphahat_2 = tf.ones(shape=(nclasses - 1,), dtype=dtype)
-    etahat_2 = eta_1_nclasses
+    etahat_2 = eta_1 + fnclasses
     gammahat_1 = tf.fill((nclasses, ngenes), tf.convert_to_tensor(1e-6, dtype=dtype))
     gammahat_2 = tf.fill((nclasses, 1), tf.convert_to_tensor(1e-6, dtype=dtype))
 
@@ -289,6 +295,7 @@ def tissue_segmentation(
             sizefactors,
             distances,
             nclasses,
+            fnclasses,
             ngenes,
             labels,
             gamma_1,
