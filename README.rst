@@ -244,7 +244,7 @@ The most important columns are
 
 -  ``g`` - The name of the gene
 -  ``pval`` - The P-value for spatial differential expression
--  ``qval`` - Signifance after correcting for multiple testing
+-  ``qval`` - Significance after correcting for multiple testing
 -  ``l`` - A parameter indicating the distance scale a gene changes
    expression over
 
