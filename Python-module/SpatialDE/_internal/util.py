@@ -34,7 +34,7 @@ def bh_adjust(pvals):
 
 
 def calc_sizefactors(adata: AnnData):
-    return adata.X.sum(axis=1).squeeze()
+    return np.asarray(adata.X.sum(axis=1)).squeeze()
 
 
 def get_l_limits(cache: DistanceCache):
