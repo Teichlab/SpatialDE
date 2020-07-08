@@ -2,6 +2,7 @@ import os
 import glob
 import warnings
 import json
+import logging
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -43,6 +44,11 @@ def read_spaceranger(spaceranger_out_dir: str, read_images: bool = True) -> AnnD
             if feature.dtype.kind in ("S", "U"):
                 feature = feature.astype(np.unicode)
             adata.var[f.astype(np.unicode)] = feature
+
+    _, counts = np.unique(adata.var_names, return_counts=True)
+    if np.sum(counts > 1) > 0:
+        logging.warning("Duplicate gene names present. Converting to unique names.")
+        adata.var_names_make_unique()
 
     tissue_positions = (
         pd.read_csv(
