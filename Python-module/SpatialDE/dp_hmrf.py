@@ -259,11 +259,12 @@ def tissue_segmentation(
                 distances, indices[:, ::-1], dists
             )  # symmetrize
         else:
-            logging.info("Not using spatial information, fitting Poisson mixture model instead.")
             distances = tf.linalg.set_diag(
                 distances, tf.repeat(tf.convert_to_tensor(np.inf, dtype), tf.shape(distances)[0])
             )
             distances = 2 * params.smoothness_factor * tf.reduce_min(distances) / distances
+    else:
+        logging.info("Not using spatial information, fitting Poisson mixture model instead.")
 
     if labels is not None:
         labels = tf.squeeze(tf.convert_to_tensor(labels, dtype=labels_dtype))
