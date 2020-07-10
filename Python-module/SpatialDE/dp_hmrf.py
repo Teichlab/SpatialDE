@@ -20,8 +20,8 @@ class TissueSegmentationParameters:
     neighbors: Optional[int] = None
     smoothness_factor: float = 2
     class_prune_threshold: float = 1e-6
-    abstol: float = 1e-3
-    reltol: float = 1e-6
+    abstol: float = 1e-12
+    reltol: float = 1e-12
     maxiter: int = 1000
     gamma_1: float = 1e-14
     gamma_2: float = 1e-14
