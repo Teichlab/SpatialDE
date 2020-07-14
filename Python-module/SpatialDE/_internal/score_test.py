@@ -174,7 +174,7 @@ class NegativeBinomialScoreTest(ScoreTest):
     def _fit_null(self, y: tf.Tensor) -> NullModel:
         scaledy = y / self.sizefactors
         res = minimize(
-            self._negative_negbinom_loglik,
+            lambda *args: self._negative_negbinom_loglik(*args).numpy(),
             x0=[
                 tf.math.log(tf.reduce_mean(scaledy)),
                 tf.math.log(
@@ -182,7 +182,7 @@ class NegativeBinomialScoreTest(ScoreTest):
                 ),
             ],
             args=(y, self.sizefactors),
-            jac=self._grad_negative_negbinom_loglik,
+            jac=lambda *args: self._grad_negative_negbinom_loglik(*args).numpy(),
             method="bfgs",
         )
         mu = tf.exp(res.x[0]) * self.sizefactors
