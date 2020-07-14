@@ -29,8 +29,8 @@ class AnnDataIterator:
         self.output_types = (outtype, tf.string)
 
     def __call__(self):
-        for g in self.genes:
-            slice = self.adata[:, g]
+        for i, g in enumerate(self.genes):
+            slice = self.adata[:, i]
             if self.layer is None:
                 data = slice.X
             else:
