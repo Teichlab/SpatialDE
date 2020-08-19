@@ -10,7 +10,7 @@ from scipy import optimize
 from scipy import linalg
 from scipy import stats
 from scipy.misc import derivative
-from scipy.misc import logsumexp
+from scipy.special import logsumexp
 
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
