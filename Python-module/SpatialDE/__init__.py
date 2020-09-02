@@ -1,13 +1,13 @@
 from .de_test import test
-#from .aeh import fit_patterns
-#from .aeh import spatial_patterns
-from .gaussian_process import  GP, GPControl, fit, fit_fast, fit_detailed
+
+from .gaussian_process import GP, GPControl, fit, fit_fast, fit_detailed
 from .dp_hmrf import (
     tissue_segmentation,
     TissueSegmentationParameters,
     TissueSegmentationStatus,
     TissueSegmentation,
 )
+from .aeh import spatial_patterns, SpatialPatternParameters
 from .io import read_spaceranger
 
 import tensorflow as tf
@@ -18,7 +18,5 @@ if gpus:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
         logical_gpus = tf.config.experimental.list_logical_devices("GPU")
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
     except RuntimeError as e:
         print(e)
-

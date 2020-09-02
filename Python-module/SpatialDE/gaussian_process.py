@@ -16,7 +16,7 @@ from anndata import AnnData
 
 from .kernels import SquaredExponential, Cosine, Linear
 from ._internal.models import Model, Constant, Null, model_factory
-from ._internal.util import DistanceCache, default_kernel_space, kspace_walk, calc_sizefactors, dense_slice
+from ._internal.util import DistanceCache, default_kernel_space, kspace_walk, dense_slice, normalize_counts
 from ._internal.tf_dataset import AnnDataDataset
 from ._internal.gpflow_helpers import *
 
@@ -113,9 +113,7 @@ def fit_detailed(
     counts = data.X
 
     if not normalized:
-        sizefactors = pd.DataFrame({'sizefactors':calc_sizefactors(data)})
-        stabilized = NaiveDE.stabilize(counts.T)
-        counts = NaiveDE.regress_out(sizefactors, stabilized, 'np.log(sizefactors)').T
+        counts = normalize_counts(counts)
 
     if control.gp is None:
         if data.n_obs < 1000:
@@ -193,15 +191,13 @@ def fit_fast(
     if not normalized and genes is None:
         warnings.warn("normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene.")
 
+    if not normalized:
+        adata = normalize_counts(adata, copy=True)
+
     data = adata[:, genes] if genes is not None else adata
 
     X = data.obsm[spatial_key]
     counts = data.X
-
-    if not normalized:
-        sizefactors = pd.DataFrame({'sizefactors':calc_sizefactors(data)})
-        stabilized = NaiveDE.stabilize(counts.T)
-        counts = NaiveDE.regress_out(sizefactors, stabilized, 'np.log(sizefactors)').T
 
     dcache = DistanceCache(X)
     if kernel_space is None:

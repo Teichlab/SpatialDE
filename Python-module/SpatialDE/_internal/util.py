@@ -3,6 +3,7 @@ from scipy.sparse import issparse
 import pandas as pd
 import tensorflow as tf
 
+import NaiveDE
 from anndata import AnnData
 
 from enum import Enum, auto
@@ -18,6 +19,15 @@ def get_dtype(df: pd.DataFrame, msg="Data frame"):
     if dtys.size > 1:
         logging.warning("%s has more than one dtype, selecting the first one" % msg)
     return dtys[0]
+
+def normalize_counts(adata: AnnData, copy=False):
+    if copy:
+        adata = adata.copy()
+
+    sizefactors = pd.DataFrame({'sizefactors': calc_sizefactors(adata)})
+    stabilized = NaiveDE.stabilize(dense_slice(adata.X.T))
+    adata.X = NaiveDE.regress_out(sizefactors, stabilized, 'np.log(sizefactors)').T
+    return adata
 
 def dense_slice(slice):
     if issparse(slice):
