@@ -7,7 +7,7 @@ from .dp_hmrf import (
     TissueSegmentationStatus,
     TissueSegmentation,
 )
-from .aeh import spatial_patterns, SpatialPatternParameters
+from .aeh import spatial_patterns, SpatialPatternParameters, SpatialPatterns
 from .io import read_spaceranger
 
 import tensorflow as tf
