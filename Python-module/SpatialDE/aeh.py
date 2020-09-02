@@ -7,13 +7,11 @@ from numbers import Real, Integral
 
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
 
 from gpflow import default_float, default_jitter, Parameter, set_trainable
 from gpflow.utilities import to_default_float, positive
 from gpflow.optimizers import Scipy
 
-import NaiveDE
 from anndata import AnnData
 
 from .kernels import SquaredExponential
