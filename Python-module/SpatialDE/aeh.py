@@ -17,12 +17,14 @@ from anndata import AnnData
 from .kernels import SquaredExponential
 from ._internal.util import normalize_counts, get_l_limits
 from ._internal.distance_cache import DistanceCache
+from ._internal.util_mixture import prune_components, prune_labels
 
 
 @dataclass(frozen=True)
 class SpatialPatternParameters:
     nclasses: Optional[Integral] = None
     lengthscales: Optional[Union[Real, List[Real]]] = None
+    pattern_prune_threshold: float = 1e-6
     method: str = "l-bfgs-b"
     tol: Optional[Real] = 1e-9
     maxiter: Integral = 1000
@@ -41,6 +43,9 @@ class SpatialPatternParameters:
         elif self.lengthscales is not None:
             for l in self.lengthscales:
                 assert l > 0, "Lengthscales must be positive"
+        assert (
+            self.pattern_prune_threshold >= 0 and self.pattern_prune_threshold <= 1
+        ), "Class pruning threshold must be between 0 and 1"
         assert self.method in ("l-bfgs-b", "bfgs"), "Method must be either bfgs or l-bfgs-b"
         if self.tol is not None:
             assert self.tol > 0, "Tolerance must be greater than 0"
@@ -303,12 +308,18 @@ def spatial_patterns(
         options={"maxiter": params.maxiter},
     )
 
+    prune_threshold = tf.convert_to_tensor(params.pattern_prune_threshold, dtype=default_float())
+    idx, labels = prune_components(
+        tf.argmax(patterns.pihat, axis=1), tf.transpose(patterns.pihat), prune_threshold, everything=True
+    )
+    pihat = tf.linalg.normalize(tf.gather(patterns.pihat, idx, axis=1), ord=1, axis=1)[0]
+
     return SpatialPatterns(
         converged=res.success,
         status=res.message,
-        labels=tf.argmax(patterns.pihat, axis=1).numpy(),
-        pattern_probabilities=patterns.pihat.numpy(),
-        patterns=patterns.mu_hat.numpy(),
+        labels=labels.numpy(),
+        pattern_probabilities=pihat.numpy(),
+        patterns=tf.gather(patterns.mu_hat, idx, axis=1).numpy(),
         niter=res.nit,
         elbo_trace=np.asarray(elbo_trace),
     )

@@ -12,6 +12,7 @@ from gpflow.utilities.ops import square_distance
 from anndata import AnnData
 
 from ._internal.util import calc_sizefactors, dense_slice
+from ._internal.util_mixture import prune_components, prune_labels
 
 
 @dataclass(frozen=True)
@@ -66,54 +67,6 @@ class TissueSegmentation:
     prune_iterations: np.ndarray
     elbo_trace: np.ndarray
     nclasses_trace: np.ndarray
-
-
-#@tf.function(experimental_relax_shapes=True)
-def _prune_components(labels: tf.Tensor, pihat: tf.Tensor, threshold: tf.Tensor, everything=False):
-    toretain = tf.squeeze(tf.where(tf.reduce_any(pihat > threshold, axis=1)), axis=1)
-    if not everything:
-        toretain = tf.range(
-            tf.reduce_max(toretain) + 1
-        )  # we can not prune everything during optimization, then vhat3_cumsum would be wrong
-        return tf.cast(toretain, labels.dtype), labels
-    return _prune_labels(labels, tf.cast(toretain, labels.dtype))
-
-
-#@tf.function(experimental_relax_shapes=True)
-def _prune_labels(labels: tf.Tensor, toretain: Optional[tf.Tensor] = None):
-    if toretain is None:
-        ulabels, _ = tf.unique(labels)
-        toretain = tf.sort(ulabels)
-    else:
-        toretain = tf.sort(toretain)
-    diffs = toretain[1:] - toretain[:-1]
-    missing = tf.cast(tf.where(diffs > 1), labels.dtype)
-    if tf.size(missing) > 0:
-        missing = tf.squeeze(missing, axis=1)
-        todrop = tf.TensorArray(labels.dtype, size=tf.size(missing), infer_shape=False)
-        shift = tf.cast(0, labels.dtype)
-        for i in tf.range(tf.size(missing)):
-            m = missing[i]
-            idx = tf.where(labels > toretain[m] - shift)
-            shift += diffs[m] - 1
-            labels = tf.tensor_scatter_nd_sub(labels, idx, tf.repeat(diffs[m] - 1, tf.size(idx)))
-            todrop = todrop.write(i, tf.range(toretain[m] + 1, toretain[m] + diffs[m]))
-        todrop = todrop.concat()
-        if toretain[0] > 0:
-            todrop = tf.concat((tf.range(toretain[0]), todrop), axis=0)
-            labels = labels - toretain[0]
-        idx = tf.squeeze(
-            tf.sparse.to_dense(
-                tf.sets.difference(
-                    tf.range(tf.reduce_max(toretain) + 1)[tf.newaxis, :],
-                    tf.cast(todrop[tf.newaxis, :], dtype=labels.dtype),
-                )
-            )
-        )
-    else:
-        idx = tf.range(tf.size(toretain))
-    return idx, labels
-
 
 @tf.function(experimental_relax_shapes=True)
 def _segment(
@@ -329,7 +282,7 @@ def tissue_segmentation(
         lastelbo = elbo
 
         if i == 1 or not i % 10:
-            idx, labels = _prune_components(labels, pihat, prune_threshold, everything=True)
+            idx, labels = prune_components(labels, pihat, prune_threshold, everything=True)
             if tf.size(idx) < tf.shape(gammahat_1)[0]:
                 pruneidx.append(i)
             alphahat_1 = tf.gather(alphahat_1, idx[:-1], axis=0)
@@ -338,8 +291,7 @@ def tissue_segmentation(
             gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
             nclasses = tf.size(idx)
 
-    idx, labels = _prune_components(labels, pihat, prune_threshold, everything=True)
-    labels = _prune_labels(labels)[1]
+    idx, labels = prune_components(labels, pihat, prune_threshold, everything=True)
     pihat = tf.linalg.normalize(tf.gather(pihat, idx, axis=0), ord=1, axis=0)[0]
     gammahat_1 = tf.gather(gammahat_1, idx, axis=0)
     gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
