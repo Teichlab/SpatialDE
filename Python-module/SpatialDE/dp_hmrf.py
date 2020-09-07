@@ -25,8 +25,8 @@ class TissueSegmentationParameters:
     maxiter: int = 1000
     gamma_1: float = 1e-14
     gamma_2: float = 1e-14
-    eta_1: float = 1e-6
-    eta_2: float = 1e-6
+    eta_1: float = 1
+    eta_2: float = 1
 
     def __post_init__(self):
         assert (
