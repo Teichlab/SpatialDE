@@ -16,7 +16,13 @@ from anndata import AnnData
 
 from .kernels import SquaredExponential, Cosine, Linear
 from ._internal.models import Model, Constant, Null, model_factory
-from ._internal.util import DistanceCache, default_kernel_space, kspace_walk, dense_slice, normalize_counts
+from ._internal.util import (
+    DistanceCache,
+    default_kernel_space,
+    kspace_walk,
+    dense_slice,
+    normalize_counts,
+)
 from ._internal.tf_dataset import AnnDataDataset
 from ._internal.gpflow_helpers import *
 
@@ -32,20 +38,13 @@ class SGPIPM(Enum):
     grid = auto()
 
 
+@dataclass(frozen=True)
 class GPControl:
-    def __init__(
-        self,
-        gp: Optional[GP] = None,
-        inducing_point_method: SGPIPM = SGPIPM.grid,
-        n_kernel_components: Optional[int] = 5,
-        ard: Optional[bool] = True,
-        n_inducers: Optional[int] = None,
-    ):
-        self.gp = gp
-        self.ipm = inducing_point_method
-        self.ncomponents = n_kernel_components
-        self.ard = ard
-        self.ninducers = n_inducers
+    gp: Optional[GP] = None
+    ipm: SGPIPM = SGPIPM.grid
+    ncomponents: int = 5
+    ard: bool = True
+    ninducers: Optional[int] = None
 
 
 def inducers_grid(X, ninducers):
@@ -89,7 +88,7 @@ def fit_model(model: Model, genes: Union[List[str], np.ndarray], counts: np.ndar
                     "M": model.n_parameters,
                 }
                 for (k, v) in vars(model.kernel).items():
-                    if k not in res and k[0] != '_':
+                    if k not in res and k[0] != "_":
                         res[k] = v
 
                 results.append(res)
@@ -99,13 +98,15 @@ def fit_model(model: Model, genes: Union[List[str], np.ndarray], counts: np.ndar
 def fit_detailed(
     adata: AnnData,
     genes: Optional[List[str]] = None,
-    normalized = False,
+    normalized=False,
     spatial_key="spatial",
     control: Optional[GPControl] = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ):
     if not normalized and genes is None:
-        warnings.warn("normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene.")
+        warnings.warn(
+            "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."
+        )
 
     data = adata[:, genes] if genes is not None else adata
 
@@ -184,12 +185,14 @@ def fit_detailed(
 def fit_fast(
     adata: AnnData,
     genes: Optional[List[str]] = None,
-    normalized = False,
+    normalized=False,
     spatial_key="spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
 ) -> pd.DataFrame:
     if not normalized and genes is None:
-        warnings.warn("normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene.")
+        warnings.warn(
+            "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."
+        )
 
     if not normalized:
         adata = normalize_counts(adata, copy=True)
@@ -238,7 +241,7 @@ def fit_fast(
 def fit(
     adata: AnnData,
     genes: Optional[List[str]] = None,
-    normalized = False,
+    normalized=False,
     spatial_key="spatial",
     control: Optional[GPControl] = GPControl(),
     kernel_space: Optional[Dict[str, float]] = None,
@@ -247,4 +250,8 @@ def fit(
     if control is None:
         return fit_fast(adata, genes, normalized, spatial_key, kernel_space)
     else:
-        return fit_detailed(adata, genes, normalized, spatial_key, control, rng).to_df(modelcol="model").reset_index(drop=True)
+        return (
+            fit_detailed(adata, genes, normalized, spatial_key, control, rng)
+            .to_df(modelcol="model")
+            .reset_index(drop=True)
+        )

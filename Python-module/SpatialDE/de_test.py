@@ -36,6 +36,20 @@ def _add_individual_score_test_result(resultdict, kernel, kname, gene):
                 resultdict[key].append(var)
     return resultdict
 
+def _merge_individual_results(individual_results):
+    merged = {}
+    for res in individual_results:
+        for k, v in res.items():
+            if k not in merged:
+                merged[k] = v if not np.isscalar(v) else [v]
+            else:
+                if isinstance(merged[k], np.ndarray):
+                    merged[k] = np.concatenate((merged[k], v))
+                elif isinstance(v, list):
+                    merged[k].extend(v)
+                else:
+                    merged[k].append(v)
+    return pd.DataFrame(merged)
 
 def test(
     adata: AnnData,
@@ -51,7 +65,7 @@ def test(
     if sizefactors is None:
         sizefactors = calc_sizefactors(adata)
     if kernel_space is None:
-        kernel_space = default_kernel_space(X, dcache)
+        kernel_space = default_kernel_space(dcache)
 
     individual_results = None if omnibus else []
     if adata.n_obs <= 2000 or omnibus:
@@ -121,20 +135,8 @@ def test(
             }
 
     results = pd.DataFrame(results)
-    results["p.adj"] = bh_adjust(results.pval.to_numpy())
+    results["padj"] = bh_adjust(results.pval.to_numpy())
 
     if individual_results is not None:
-        merged = {}
-        for res in individual_results:
-            for k, v in res.items():
-                if k not in merged:
-                    merged[k] = v if not np.isscalar(v) else [v]
-                else:
-                    if isinstance(merged[k], np.ndarray):
-                        merged[k] = np.concatenate((merged[k], v))
-                    elif isinstance(v, list):
-                        merged[k].extend(v)
-                    else:
-                        merged[k].append(v)
-        individual_results = pd.DataFrame(merged)
+        individual_results = _merge_individual_results(individual_results)
     return results, individual_results

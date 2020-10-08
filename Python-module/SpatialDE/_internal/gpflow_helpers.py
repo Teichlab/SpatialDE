@@ -11,6 +11,7 @@ import tensorflow as tf
 
 from .models import Model
 from .sm_kernel import *
+from .util import gower_factor
 
 
 class Linear(gpflow.kernels.Linear):
@@ -38,13 +39,7 @@ class SMPlusLinearKernel(gpflow.kernels.Sum):
 
     @staticmethod
     def _scaled_var(X, k):
-        """ Gower normalization factor for covariance matric K
-
-        Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
-        """
-        K = k(X)
-        gower = (tf.linalg.trace(K) - tf.reduce_sum(tf.reduce_mean(K, axis=0))) / (K.shape[0] - 1)
-        return k.variance * gower
+        return gower_factor(k(X), k.variance)
 
     def scaled_variance(self, X):
         smvars = tf.convert_to_tensor([self._scaled_var(X, k) for k in self.kernels[0]])

@@ -7,14 +7,14 @@ from gpflow import Parameter
 from gpflow.kernels import Stationary, Sum
 from gpflow.utilities import positive
 from gpflow.utilities.ops import square_distance, difference_matrix
-from gpflow.config import default_float
+from gpflow.utilities import to_default_float
 
 
 class Spectral(Stationary):
     def __init__(self, variance=1.0, lengthscales=1, periods=1, **kwargs):
         super().__init__(variance=variance, lengthscales=lengthscales, **kwargs)
-        self.lengthscales.transform = positive(lower=1e-6)
-        self.periods = Parameter(periods, transform=positive(lower=1e-6))
+        self.lengthscales.transform = positive(lower=to_default_float(1e-6))
+        self.periods = Parameter(periods, transform=positive(lower=to_default_float(1e-6)))
 
         self._validate_ard_active_dims(self.periods)
 
@@ -35,7 +35,7 @@ class Spectral(Stationary):
         cospart = tf.cos(2 * np.pi * tf.reduce_sum(dist, axis=-1))
 
         dist = square_distance(self.scale(X), self.scale(X2))
-        exppart = tf.exp(-2 * np.pi**2 * dist)
+        exppart = tf.exp(-0.5 * dist)
 
         return cospart * exppart
 
@@ -50,7 +50,7 @@ class Spectral(Stationary):
         if s.ndim < 2:
             s = tf.expand_dims(s, 1)
         loc = tf.broadcast_to(self.periods, (s.shape[1],))
-        scale_diag = tf.broadcast_to(self.lengthscales, (s.shape[1],))
+        scale_diag = tf.broadcast_to(self.lengthscales / (0.25 * np.pi ** 2), (s.shape[1],))
         mvd = tfp.distributions.MultivariateNormalDiag(loc=1 / loc, scale_diag=1 / scale_diag)
         return tf.math.log(tf.constant(0.5, dtype=self.variance.dtype)) + tf.reduce_logsumexp(
             [mvd.log_prob(s), mvd.log_prob(-s)], axis=0

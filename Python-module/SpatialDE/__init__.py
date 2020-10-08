@@ -8,6 +8,7 @@ from .dp_hmrf import (
     TissueSegmentation,
 )
 from .aeh import spatial_patterns, SpatialPatternParameters, SpatialPatterns
+from .svca import test_spatial_interactions, fit_spatial_interactions
 from .io import read_spaceranger
 
 import tensorflow as tf

@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.sparse import issparse
+import scipy.stats
 import pandas as pd
 import tensorflow as tf
 
@@ -77,9 +78,30 @@ def kspace_walk(kernel_space: dict, cache: DistanceCache):
             yield factory(kern, cache, lengthscales), kern
 
 
-def default_kernel_space(X: np.ndarray, cache: DistanceCache):
+def default_kernel_space(cache: DistanceCache):
     l_min, l_max = get_l_limits(cache)
     return {
         "SE": np.logspace(np.log10(l_min), np.log10(l_max), 5),
         "PER": np.logspace(np.log10(l_min), np.log10(l_max), 5),
     }
+
+def concat_tensors(tens):
+    return tf.concat([tf.reshape(t, (-1,)) for t in tens], axis=0)
+
+def assign_concat(x, vars):
+    offset = 0
+    for v in vars:
+        newval = tf.reshape(x[offset : (offset + tf.size(v))], v.shape)
+        v.assign(newval)
+        offset += tf.size(v)
+
+def gower_factor(mat, varcomp=1):
+    """ Gower normalization factor for covariance matric K
+
+    Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
+    """
+    return varcomp * (tf.linalg.trace(mat) - tf.reduce_sum(tf.reduce_mean(mat, axis=0))) / tf.cast(tf.shape(mat)[0] - 1, mat.dtype)
+
+def quantile_normalize(mat):
+    idx = np.argsort(mat, axis=0) + 0.5
+    return scipy.stats.norm(loc=0, scale=1).ppf(idx / mat.shape[0])
