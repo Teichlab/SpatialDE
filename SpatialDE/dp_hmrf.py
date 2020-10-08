@@ -68,6 +68,7 @@ class TissueSegmentation:
     elbo_trace: np.ndarray
     nclasses_trace: np.ndarray
 
+
 @tf.function(experimental_relax_shapes=True)
 def _segment(
     counts: tf.Tensor,
@@ -110,7 +111,9 @@ def _segment(
     alphahat = (eta_1_nclasses - 1) / etahat_2
     vhat3_cumsum = tf.cumsum(vhat3) - vhat3
 
-    vhat_sum = (tf.concat(((0,), vhat3_cumsum), axis=0) + tf.concat((vhat2, (0,)), axis=0))[:, tf.newaxis]
+    vhat_sum = (tf.concat(((0,), vhat3_cumsum), axis=0) + tf.concat((vhat2, (0,)), axis=0))[
+        :, tf.newaxis
+    ]
 
     phi = (
         p_x_neighborhood
@@ -130,7 +133,14 @@ def _segment(
 
     elbo = (
         tf.reduce_sum(pihat * p_x_neighborhood)
-        + tf.reduce_sum(pihat * (vhat_sum + tf.matmul(lambdahat_2, counts, transpose_b=True) - tf.reduce_sum(lambdahat_1, axis=1, keepdims=True) * sizefactors))
+        + tf.reduce_sum(
+            pihat
+            * (
+                vhat_sum
+                + tf.matmul(lambdahat_2, counts, transpose_b=True)
+                - tf.reduce_sum(lambdahat_1, axis=1, keepdims=True) * sizefactors
+            )
+        )
         + tf.reduce_sum((alphahat - alphahat_2) * vhat3)
         + tf.reduce_sum((gamma_1 - gammahat_1) * lambdahat_2)
         + tf.reduce_sum((gammahat_2 - gamma_2) * lambdahat_1)

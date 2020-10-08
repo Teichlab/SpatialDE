@@ -10,7 +10,8 @@ from scipy.stats import chi2
 
 from ..kernels import Kernel
 
-class Model():
+
+class Model:
     def __init__(self, X: np.ndarray, kernel: Kernel):
         self.X = X
         self.n = X.shape[0]
@@ -373,9 +374,7 @@ class GPR(GPModel):
         return np.sum((self._Uy - self._U1 * self.mu) ** 2 / self._dL)
 
     def _calc_mu(self) -> float:
-        return np.sum(self._U1 * self._Uy / self._dL) / np.sum(
-            np.square(self._U1) / self._dL
-        )
+        return np.sum(self._U1 * self._Uy / self._dL) / np.sum(np.square(self._U1) / self._dL)
 
     def _calc_sigma_s2(self) -> float:
         return self._residual_quadratic() / self.n
@@ -457,9 +456,7 @@ class Null(Model):
         )
 
 
-def model_factory(
-    X: np.ndarray, Z: Union[np.ndarray, None], kern: Kernel, *args, **kwargs
-):
+def model_factory(X: np.ndarray, Z: Union[np.ndarray, None], kern: Kernel, *args, **kwargs):
     if Z is None:
         return GPR(X, kern, *args, **kwargs)
     else:

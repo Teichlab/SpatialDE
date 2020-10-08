@@ -20,6 +20,7 @@ from ._internal.score_test import (
 )
 from ._internal.tf_dataset import AnnDataDataset
 
+
 def _add_individual_score_test_result(resultdict, kernel, kname, gene):
     if "kernel" not in resultdict:
         resultdict["kernel"] = [kname]
@@ -37,6 +38,7 @@ def _add_individual_score_test_result(resultdict, kernel, kname, gene):
                 resultdict[key].append(var)
     return resultdict
 
+
 def _merge_individual_results(individual_results):
     merged = {}
     for res in individual_results:
@@ -52,12 +54,13 @@ def _merge_individual_results(individual_results):
                     merged[k].append(v)
     return pd.DataFrame(merged)
 
+
 def test(
     adata: AnnData,
     omnibus: bool = False,
     spatial_key="spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
-    sizefactors: Optional[np.ndarray] = None
+    sizefactors: Optional[np.ndarray] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     logging.info("Performing DE test")
 
@@ -114,7 +117,9 @@ def test(
                 nullit = ()
                 havenull = False
             with tqdm(total=adata.n_vars) as pbar:
-                for null, (i, (y, g)) in zip_longest(nullit, AnnDataDataset(adata, dtype=test.dtype).enumerate()):
+                for null, (i, (y, g)) in zip_longest(
+                    nullit, AnnDataDataset(adata, dtype=test.dtype).enumerate()
+                ):
                     i = i.numpy()
                     g = g.numpy().decode("utf-8")
 
@@ -127,7 +132,9 @@ def test(
                     results[i][0] += t
                     results[i][1].append(res)
                     resultdict = res.to_dict()
-                    individual_results.append(_add_individual_score_test_result(resultdict, k, n, g))
+                    individual_results.append(
+                        _add_individual_score_test_result(resultdict, k, n, g)
+                    )
         for i, g in enumerate(adata.var_names):
             results[i] = {
                 "gene": g,

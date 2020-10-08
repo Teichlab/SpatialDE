@@ -58,9 +58,7 @@ class SVCA(tf.Module):
         self._sizefactors = np.squeeze(sizefactors)
         if len(self._sizefactors.shape) != 1:
             raise ValueError("Size factors vector must have rank 1")
-        self._log_sizefactors = tf.squeeze(
-            tf.math.log(to_default_float(sizefactors))
-        )
+        self._log_sizefactors = tf.squeeze(tf.math.log(to_default_float(sizefactors)))
 
     @property
     def kernel(self):
@@ -113,7 +111,11 @@ class SVCA(tf.Module):
             axes=(-1, -1),
         )
         ldet = tf.reduce_sum(tf.math.log(tf.linalg.diag_part(cholvar)))
-        ldet2 = tf.math.log(tf.reduce_sum(tf.linalg.cholesky_solve(cholvar, tf.ones((self._ncells, 1), dtype=default_float()))))
+        ldet2 = tf.math.log(
+            tf.reduce_sum(
+                tf.linalg.cholesky_solve(cholvar, tf.ones((self._ncells, 1), dtype=default_float()))
+            )
+        )
 
         return -ldet - 0.5 * quad - 0.5 * ldet2
 
@@ -299,7 +301,9 @@ class SVCAInteractionScoreTest(ScoreTest):
         Vinv_dV = tf.linalg.cholesky_solve(cholV[tf.newaxis, ...], dV)
 
         Vinv_X = tf.squeeze(
-            tf.linalg.cholesky_solve(cholV, tf.ones((tf.shape(residual)[0], 1), dtype=default_float()))
+            tf.linalg.cholesky_solve(
+                cholV, tf.ones((tf.shape(residual)[0], 1), dtype=default_float())
+            )
         )
         hatMat = Vinv_X[:, tf.newaxis] * Vinv_X[tf.newaxis, :] / tf.reduce_sum(Vinv_X)
 

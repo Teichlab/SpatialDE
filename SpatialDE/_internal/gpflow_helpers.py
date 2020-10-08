@@ -59,7 +59,9 @@ class GeneGPModel(metaclass=ABCMeta):
         dist = tf.linalg.set_diag(dist, tf.fill((X.shape[0],), tf.cast(np.inf, dist.dtype)))
         min_1nndist = tf.reduce_min(dist)
 
-        datarange = tf.math.reduce_max(tf.math.reduce_max(X, axis=0) - tf.math.reduce_min(X, axis=0))
+        datarange = tf.math.reduce_max(
+            tf.math.reduce_max(X, axis=0) - tf.math.reduce_min(X, axis=0)
+        )
 
         minperiod = 2 * min_1nndist
         varinit = min_1nndist + 0.5 * (range - min_1nndist)
@@ -75,7 +77,10 @@ class GeneGPModel(metaclass=ABCMeta):
             k = Spectral(variance=v, lengthscales=varinit, periods=periodinit)
             k.lengthscales.transform = tfp.bijectors.Sigmoid(low=0.1 * min_1nndist, high=datarange)
             k.periods.transform = tfp.bijectors.Sigmoid(low=minperiod, high=2 * datarange)
-            k.variance.transform = tfp.bijectors.Sigmoid(low=gpflow.utilities.to_default_float(0), high=gpflow.utilities.to_default_float(maxvar))
+            k.variance.transform = tfp.bijectors.Sigmoid(
+                low=gpflow.utilities.to_default_float(0),
+                high=gpflow.utilities.to_default_float(maxvar),
+            )
             kernels.append(k)
         kern = SpectralMixture(kernels)
         return SMPlusLinearKernel(kern)
@@ -118,7 +123,6 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
             inducing_variable=inducing_variable,
             mean_function=gpflow.mean_functions.Constant(),
         )
-
 
     def freeze(self):
         X = self.data[0]
@@ -191,7 +195,7 @@ class GeneGP(Model):
             X = self.model.data[0]
         return self.model.predict_f(X)[0]
 
-    def plot_power_spectrum(self, xlim:float=None, ylim:float=None, **kwargs):
+    def plot_power_spectrum(self, xlim: float = None, ylim: float = None, **kwargs):
         return self.model.kernel.spectral_mixture.plot_power_spectrum(xlim, ylim, **kwargs)
 
     @property
@@ -299,11 +303,7 @@ class DataSetResults(dict):
         for gene, res in self.items():
             df["gene"].append(gene)
             variances = res.variances
-            df["FSV"].append(
-                (
-                    1 - variances.fraction_variance.noise
-                ).numpy()
-            )
+            df["FSV"].append((1 - variances.fraction_variance.noise).numpy())
             df["s2_FSV"].append(variances.var_fraction_variance.noise.numpy())
 
             for i, k in enumerate(res.kernel.spectral_mixture.kernels):

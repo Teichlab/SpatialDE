@@ -116,7 +116,9 @@ class _SpatialPatterns(tf.Module):
             eta_2 + default_jitter(), dtype=default_float(), transform=positive(lower=eta_2)
         )
         self.gammahat_2 = Parameter(
-            self.gammahat_1, dtype=default_float(), transform=positive(lower=gamma_2),
+            self.gammahat_1,
+            dtype=default_float(),
+            transform=positive(lower=gamma_2),
         )
 
     @property
@@ -149,7 +151,8 @@ class _SpatialPatterns(tf.Module):
     def mu_hat(self):
         ybar = self._ybar()
         return tf.stack(
-            [self._mu_hat(c, ybar=ybar[:, c]) for c in tf.range(self.nclasses)], axis=1,
+            [self._mu_hat(c, ybar=ybar[:, c]) for c in tf.range(self.nclasses)],
+            axis=1,
         )
 
     def _mu_hat(self, c=None, Sigma_hat=None, ybar=None):
@@ -310,7 +313,10 @@ def spatial_patterns(
 
     prune_threshold = tf.convert_to_tensor(params.pattern_prune_threshold, dtype=default_float())
     idx, labels = prune_components(
-        tf.argmax(patterns.pihat, axis=1), tf.transpose(patterns.pihat), prune_threshold, everything=True
+        tf.argmax(patterns.pihat, axis=1),
+        tf.transpose(patterns.pihat),
+        prune_threshold,
+        everything=True,
     )
     pihat = tf.linalg.normalize(tf.gather(patterns.pihat, idx, axis=1), ord=1, axis=1)[0]
 

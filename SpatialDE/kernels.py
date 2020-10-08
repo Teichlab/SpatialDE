@@ -18,7 +18,9 @@ def scale(X: tf.Tensor, lengthscale: Optional[float] = 1):
 
 
 def scaled_difference_matrix(
-    X: tf.Tensor, Y: Optional[tf.Tensor] = None, lengthscale: Optional[float] = 1,
+    X: tf.Tensor,
+    Y: Optional[tf.Tensor] = None,
+    lengthscale: Optional[float] = 1,
 ):
     return difference_matrix(scale(X, lengthscale), scale(Y, lengthscale))
 
@@ -99,7 +101,7 @@ class Linear(Kernel):
             Y = X
         return tf.sum(X[:, tf.newaxis, :] * Y[tf.newaxis, ...], axis=-1)
 
-    def _K_diag(self, X: tf.Tensor, cache:bool = False):
+    def _K_diag(self, X: tf.Tensor, cache: bool = False):
         if cache:
             X = self._cache.X
         return tf.sum(tf.square(X), axis=-1)

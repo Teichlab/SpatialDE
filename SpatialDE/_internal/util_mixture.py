@@ -2,6 +2,7 @@ from typing import Optional
 
 import tensorflow as tf
 
+
 @tf.function(experimental_relax_shapes=True)
 def prune_components(labels: tf.Tensor, pihat: tf.Tensor, threshold: tf.Tensor, everything=False):
     toretain = tf.squeeze(tf.where(tf.reduce_any(pihat > threshold, axis=1)), axis=1)
@@ -47,4 +48,3 @@ def prune_labels(labels: tf.Tensor, toretain: Optional[tf.Tensor] = None):
     else:
         idx = tf.cast(tf.range(tf.size(toretain)), labels.dtype)
     return idx, labels
-

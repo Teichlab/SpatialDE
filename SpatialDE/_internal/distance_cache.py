@@ -3,6 +3,7 @@ from gpflow import default_float
 from gpflow.utilities import to_default_float
 from gpflow.utilities.ops import square_distance, difference_matrix
 
+
 class DistanceCache:
     def __init__(self, X: tf.Tensor):
         self.X = X
@@ -18,6 +19,7 @@ class DistanceCache:
     @property
     def sumOfDifferences(self):
         if self._sumDiff is None:
-            self._sumDiff = tf.reduce_sum(difference_matrix(to_default_float(self.X), None), axis=-1)
+            self._sumDiff = tf.reduce_sum(
+                difference_matrix(to_default_float(self.X), None), axis=-1
+            )
         return self._sumDiff
-

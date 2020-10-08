@@ -15,20 +15,23 @@ import logging
 from .distance_cache import DistanceCache
 from ..kernels import Linear, SquaredExponential, Cosine
 
+
 def get_dtype(df: pd.DataFrame, msg="Data frame"):
     dtys = df.dtypes.unique()
     if dtys.size > 1:
         logging.warning("%s has more than one dtype, selecting the first one" % msg)
     return dtys[0]
 
+
 def normalize_counts(adata: AnnData, copy=False):
     if copy:
         adata = adata.copy()
 
-    sizefactors = pd.DataFrame({'sizefactors': calc_sizefactors(adata)})
+    sizefactors = pd.DataFrame({"sizefactors": calc_sizefactors(adata)})
     stabilized = NaiveDE.stabilize(dense_slice(adata.X.T))
-    adata.X = NaiveDE.regress_out(sizefactors, stabilized, 'np.log(sizefactors)').T
+    adata.X = NaiveDE.regress_out(sizefactors, stabilized, "np.log(sizefactors)").T
     return adata
+
 
 def dense_slice(slice):
     if issparse(slice):
@@ -85,8 +88,10 @@ def default_kernel_space(cache: DistanceCache):
         "PER": np.logspace(np.log10(l_min), np.log10(l_max), 5),
     }
 
+
 def concat_tensors(tens):
     return tf.concat([tf.reshape(t, (-1,)) for t in tens], axis=0)
+
 
 def assign_concat(x, vars):
     offset = 0
@@ -95,12 +100,18 @@ def assign_concat(x, vars):
         v.assign(newval)
         offset += tf.size(v)
 
+
 def gower_factor(mat, varcomp=1):
-    """ Gower normalization factor for covariance matric K
+    """Gower normalization factor for covariance matric K
 
     Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
     """
-    return varcomp * (tf.linalg.trace(mat) - tf.reduce_sum(tf.reduce_mean(mat, axis=0))) / tf.cast(tf.shape(mat)[0] - 1, mat.dtype)
+    return (
+        varcomp
+        * (tf.linalg.trace(mat) - tf.reduce_sum(tf.reduce_mean(mat, axis=0)))
+        / tf.cast(tf.shape(mat)[0] - 1, mat.dtype)
+    )
+
 
 def quantile_normalize(mat):
     idx = np.argsort(mat, axis=0) + 0.5

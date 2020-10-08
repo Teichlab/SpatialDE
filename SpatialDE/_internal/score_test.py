@@ -128,7 +128,8 @@ class ScoreTest(ABC):
                 )
             self._K = tf.squeeze(
                 tf.reshape(
-                    tf.gather_nd(self._K, idx), (-1, tf.size(self._yidx), tf.size(self._yidx)),
+                    tf.gather_nd(self._K, idx),
+                    (-1, tf.size(self._yidx), tf.size(self._yidx)),
                 )
             )
 
@@ -162,9 +163,7 @@ class NegativeBinomialScoreTest(ScoreTest):
         omnibus: bool = False,
         kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
-        self.sizefactors = tf.squeeze(
-            to_default_float(sizefactors)
-        )
+        self.sizefactors = tf.squeeze(to_default_float(sizefactors))
         if tf.rank(self.sizefactors) > 1:
             raise ValueError("Size factors vector must have rank 1")
 

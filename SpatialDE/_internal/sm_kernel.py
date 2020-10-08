@@ -82,7 +82,7 @@ class SpectralMixture(Sum):
             dens.append(k.variance * k.log_power_spectrum(s))
         return tf.reduce_logsumexp(dens, axis=0)
 
-    def plot_power_spectrum(self, xlim:float=None, ylim:float=None, **kwargs):
+    def plot_power_spectrum(self, xlim: float = None, ylim: float = None, **kwargs):
         if xlim is None or ylim is None:
             lengthscales = tf.convert_to_tensor([k.lengthscales for k in self.kernels])
             if lengthscales.ndim < 2:
@@ -119,7 +119,7 @@ class SpectralMixture(Sum):
             ax.set_xlabel("frequency")
             ax.set_ylabel("log spectral density")
         else:
-            x, y = tf.meshgrid(tf.linspace(0., xlim, 1000), tf.linspace(0., ylim, 1000))
+            x, y = tf.meshgrid(tf.linspace(0.0, xlim, 1000), tf.linspace(0.0, ylim, 1000))
             ps = tf.reshape(
                 self.log_power_spectrum(
                     tf.stack([tf.reshape(x, (-1,)), tf.reshape(y, (-1,))], axis=1)
