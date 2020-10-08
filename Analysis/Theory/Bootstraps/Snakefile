@@ -1,9 +1,0 @@
-rule all:
-    input: ['bootstrap_cb_result_{}.csv'.format(i) for i in range(10)]
-
-rule spatialde:
-    output:
-        'bootstrap_cb_result_{i}.csv'
-    shell:
-        ''' python bootstraps_CB_analysis.py {output}
-        '''
