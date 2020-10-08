@@ -6,6 +6,7 @@ from typing import Optional, Dict, Tuple, Union, List
 
 import numpy as np
 import pandas as pd
+from gpflow import default_float
 
 from anndata import AnnData
 
@@ -82,7 +83,7 @@ def test(
 
         results = []
         with tqdm(total=adata.n_vars) as pbar:
-            for i, (y, g) in AnnDataDataset(adata, dtype=test.dtype).enumerate():
+            for i, (y, g) in AnnDataDataset(adata, dtype=default_float()).enumerate():
                 i = i.numpy()
                 g = g.numpy().decode("utf-8")
                 t0 = time()

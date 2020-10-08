@@ -8,6 +8,7 @@ from anndata import AnnData
 import numpy as np
 import pandas as pd
 import gpflow
+from gpflow.utilities import to_default_float
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -48,10 +49,10 @@ def test_spatial_interactions(
         k = Spectral(variance=1, lengthscales=lengthscales, periods=periods)
         gpflow.set_trainable(k.variance, False)
         k.lengthscales.transform = tfp.bijectors.Sigmoid(
-            low=tf.cast(0.5 * l_min, SVCA._dtype), high=tf.cast(2 * l_max, SVCA._dtype)
+            low=to_default_float(0.5 * l_min), high=to_default_float(2 * l_max)
         )
         k.periods.transform = tfp.bijectors.Sigmoid(
-            low=tf.cast(0.5 * l_min, SVCA._dtype), high=tf.cast(2 * l_max, SVCA._dtype)
+            low=to_default_float(0.5 * l_min), high=to_default_float(2 * l_max)
         )
         kernels.append(k)
     kernel = SpectralMixture(kernels)

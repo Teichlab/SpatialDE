@@ -6,6 +6,8 @@ import scipy
 
 import tensorflow as tf
 import gpflow
+from gpflow import default_float
+from gpflow.utilities import to_default_float
 
 from .util import gower_factor, quantile_normalize
 from .score_test import ScoreTest
@@ -13,7 +15,6 @@ from .optimizer import MultiScipyOptimizer
 
 
 class SVCA(tf.Module):
-    _dtype = gpflow.default_float()
     _fracvar = namedtuple("FractionVariance", "intrinsic environmental noise")
     _fracvar_interact = namedtuple("FractionVraiance", "intrinsic environmental interaction noise")
 
@@ -24,28 +25,22 @@ class SVCA(tf.Module):
         sizefactors: np.ndarray,
         kernel: Optional[gpflow.kernels.Kernel] = None,
     ):
-        self.expression = tf.convert_to_tensor(expression, self._dtype)
-        self.sizefactors = tf.squeeze(sizefactors)
-        self.log_sizefactors = tf.squeeze(
-            tf.math.log(tf.convert_to_tensor(sizefactors, self._dtype))
-        )
-        if tf.rank(self.sizefactors) > 1:
-            raise ValueError("Size factors vector must have rank 1")
-
+        self.expression = to_default_float(expression)
+        self.sizefactors = sizefactors
         self._ncells, self._ngenes = tf.shape(self.expression)
-        self._X = tf.convert_to_tensor(X, self._dtype)
+        self._X = to_default_float(X)
 
         self._current_expression = tf.Variable(
-            tf.zeros((self._ncells, self._ngenes - 1), dtype=self._dtype), trainable=False
+            tf.zeros((self._ncells, self._ngenes - 1), dtype=default_float()), trainable=False
         )
         self.intrinsic_variance_matrix = tf.Variable(
-            tf.zeros((self._ncells, self._ncells), dtype=self._dtype), trainable=False
+            tf.zeros((self._ncells, self._ncells), dtype=default_float()), trainable=False
         )
         self._sigmas = gpflow.Parameter(
-            tf.ones((4,), dtype=self._dtype), transform=gpflow.utilities.positive(lower=1e-9)
+            tf.ones((4,), dtype=default_float()), transform=gpflow.utilities.positive(lower=1e-9)
         )
         self._currentgene = tf.Variable(0, dtype=tf.int32, trainable=False)
-        self.muhat = tf.Variable(tf.ones((self._ncells,), dtype=self._dtype), trainable=False)
+        self.muhat = tf.Variable(tf.ones((self._ncells,), dtype=default_float()), trainable=False)
 
         self.kernel = kernel
 
@@ -53,6 +48,19 @@ class SVCA(tf.Module):
         self._use_interactions = tf.Variable(False, dtype=tf.bool, trainable=False)
 
         self._old_interactions = False
+
+    @property
+    def sizefactors(self) -> np.ndarray:
+        return self._sizefactors
+
+    @sizefactors.setter
+    def sizefactors(self, sizefactors: np.ndarray):
+        self._sizefactors = np.squeeze(sizefactors)
+        if len(self._sizefactors.shape) != 1:
+            raise ValueError("Size factors vector must have rank 1")
+        self._log_sizefactors = tf.squeeze(
+            tf.math.log(to_default_float(sizefactors))
+        )
 
     @property
     def kernel(self):
@@ -81,7 +89,7 @@ class SVCA(tf.Module):
             else idx
         )
         self._current_expression.assign(
-            tf.gather(self.expression, idx, axis=1) / self.log_sizefactors[:, tf.newaxis]
+            tf.gather(self.expression, idx, axis=1) / self._log_sizefactors[:, tf.newaxis]
         )
 
         intvar = tf.matmul(self._current_expression, self._current_expression, transpose_b=True)
@@ -105,14 +113,14 @@ class SVCA(tf.Module):
             axes=(-1, -1),
         )
         ldet = tf.reduce_sum(tf.math.log(tf.linalg.diag_part(cholvar)))
-        ldet2 = tf.math.log(tf.reduce_sum(tf.linalg.cholesky_solve(cholvar, tf.ones((self._ncells, 1), dtype=self._dtype))))
+        ldet2 = tf.math.log(tf.reduce_sum(tf.linalg.cholesky_solve(cholvar, tf.ones((self._ncells, 1), dtype=default_float()))))
 
         return -ldet - 0.5 * quad - 0.5 * ldet2
 
     def alphahat(self):
         Vchol = tf.linalg.cholesky(self.V())
         Vinvnu = tf.linalg.cholesky_solve(Vchol, self.nu[:, tf.newaxis])
-        VinvX = tf.linalg.cholesky_solve(Vchol, tf.ones((self._ncells, 1), dtype=self._dtype))
+        VinvX = tf.linalg.cholesky_solve(Vchol, tf.ones((self._ncells, 1), dtype=default_float()))
         return tf.reduce_sum(Vinvnu) / tf.reduce_sum(VinvX)
 
     def betahat(self):
@@ -127,7 +135,7 @@ class SVCA(tf.Module):
             tf.math.log(self.muhat)
             + self.expression[:, self._currentgene] / self.muhat
             - 1
-            - self.log_sizefactors
+            - self._log_sizefactors
         )
 
     def r(self):
@@ -135,7 +143,7 @@ class SVCA(tf.Module):
 
     @tf.function
     def estimate_muhat(self):
-        self.muhat.assign(tf.exp(self.alphahat() + self.betahat() + self.log_sizefactors))
+        self.muhat.assign(tf.exp(self.alphahat() + self.betahat() + self._log_sizefactors))
 
     def V(self):
         V = self.D()
@@ -157,7 +165,7 @@ class SVCA(tf.Module):
                     self.intrinsic_variance_matrix,
                     self.environmental_variance_matrix,
                     self.interaction_variance_matrix,
-                    tf.eye(self._ncells, dtype=self._dtype),
+                    tf.eye(self._ncells, dtype=default_float()),
                 ),
                 axis=0,
             )
@@ -166,7 +174,7 @@ class SVCA(tf.Module):
                 (
                     self.intrinsic_variance_matrix,
                     self.environmental_variance_matrix,
-                    tf.eye(self._ncells, dtype=self._dtype),
+                    tf.eye(self._ncells, dtype=default_float()),
                 ),
                 axis=0,
             )
@@ -174,7 +182,7 @@ class SVCA(tf.Module):
     def fraction_variance(self):
         intrinsic = gower_factor(self.intrinsic_variance)
         environ = gower_factor(self.environmental_variance)
-        noise = gower_factor(tf.eye(self._ncells, dtype=self._dtype), self.noise_variance)
+        noise = gower_factor(tf.eye(self._ncells, dtype=default_float()), self.noise_variance)
 
         totalgower = intrinsic + environ + noise
         if self._use_interactions:
@@ -291,7 +299,7 @@ class SVCAInteractionScoreTest(ScoreTest):
         Vinv_dV = tf.linalg.cholesky_solve(cholV[tf.newaxis, ...], dV)
 
         Vinv_X = tf.squeeze(
-            tf.linalg.cholesky_solve(cholV, tf.ones((tf.shape(residual)[0], 1), dtype=tf.float64))
+            tf.linalg.cholesky_solve(cholV, tf.ones((tf.shape(residual)[0], 1), dtype=default_float()))
         )
         hatMat = Vinv_X[:, tf.newaxis] * Vinv_X[tf.newaxis, :] / tf.reduce_sum(Vinv_X)
 

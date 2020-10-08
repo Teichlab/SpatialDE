@@ -5,7 +5,8 @@ from typing import Optional, Union, List, Tuple
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-import gpflow
+from gpflow import default_float
+from gpflow.utilities import to_default_float
 
 tfd = tfp.distributions
 from scipy.optimize import minimize
@@ -56,8 +57,6 @@ def combine_pvalues(
 
 
 class ScoreTest(ABC):
-    dtype = gpflow.default_float()
-
     @dataclass
     class NullModel(ABC):
         pass
@@ -86,9 +85,9 @@ class ScoreTest(ABC):
             stat, e_tilde, I_tau_tau = self._test(y, nullmodel)
             return self._calc_test(stat, e_tilde, I_tau_tau), nullmodel
         except TypeError as e:
-            if y.dtype is not self.dtype:
+            if y.dtype is not default_float():
                 raise TypeError(
-                    f"Value vector has wrong dtype. Expected: {repr(self.dtype)}, given: {repr(y.dtype)}"
+                    f"Value vector has wrong dtype. Expected: {repr(default_float())}, given: {repr(y.dtype)}"
                 )
             else:
                 raise
@@ -109,7 +108,7 @@ class ScoreTest(ABC):
                 self._K = tf.stack([k.K() for k in kernel], axis=0)
         else:
             self._K = self._kernel[0].K()
-        self._K = tf.cast(self._K, self.dtype)
+        self._K = to_default_float(self._K)
         self.n = tf.shape(self._K)[0]
 
         if self._yidx is not None:
@@ -164,8 +163,8 @@ class NegativeBinomialScoreTest(ScoreTest):
         kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
         self.sizefactors = tf.squeeze(
-            tf.convert_to_tensor(sizefactors, dtype=tf.float64)
-        )  # we want float64 here, this greatly reduces the number of iterations for the MLE
+            to_default_float(sizefactors)
+        )
         if tf.rank(self.sizefactors) > 1:
             raise ValueError("Size factors vector must have rank 1")
 
@@ -199,9 +198,9 @@ class NegativeBinomialScoreTest(ScoreTest):
     ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         return self._do_test(
             self._K,
-            tf.cast(y, self.dtype),
-            tf.cast(nullmodel.alpha, self.dtype),
-            tf.cast(nullmodel.mu, self.dtype),
+            to_default_float(y),
+            to_default_float(nullmodel.alpha),
+            to_default_float(nullmodel.mu),
         )
 
     @staticmethod
