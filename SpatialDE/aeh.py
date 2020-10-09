@@ -14,7 +14,7 @@ from gpflow.optimizers import Scipy
 
 from anndata import AnnData
 
-from .kernels import SquaredExponential
+from ._internal.kernels import SquaredExponential
 from ._internal.util import normalize_counts, get_l_limits
 from ._internal.distance_cache import DistanceCache
 from ._internal.util_mixture import prune_components, prune_labels

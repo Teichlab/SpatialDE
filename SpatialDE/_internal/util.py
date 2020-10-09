@@ -13,7 +13,7 @@ from typing import Optional, Union
 import logging
 
 from .distance_cache import DistanceCache
-from ..kernels import Linear, SquaredExponential, Cosine
+from .kernels import Linear, SquaredExponential, Cosine
 
 
 def get_dtype(df: pd.DataFrame, msg="Data frame"):

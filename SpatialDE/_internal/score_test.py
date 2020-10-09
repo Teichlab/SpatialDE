@@ -11,7 +11,7 @@ from gpflow.utilities import to_default_float
 tfd = tfp.distributions
 from scipy.optimize import minimize
 
-from ..kernels import Kernel
+from .kernels import Kernel
 
 from enum import Enum, auto
 import math

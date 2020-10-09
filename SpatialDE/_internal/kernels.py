@@ -7,7 +7,7 @@ from gpflow import default_float
 from gpflow.utilities import to_default_float
 from gpflow.utilities.ops import square_distance, difference_matrix
 
-from ._internal.distance_cache import DistanceCache
+from .distance_cache import DistanceCache
 
 
 def scale(X: tf.Tensor, lengthscale: Optional[float] = 1):

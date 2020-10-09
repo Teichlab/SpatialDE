@@ -8,7 +8,7 @@ from scipy import optimize
 from scipy.misc import derivative
 from scipy.stats import chi2
 
-from ..kernels import Kernel
+from .kernels import Kernel
 
 
 class Model:

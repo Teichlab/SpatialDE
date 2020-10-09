@@ -14,7 +14,7 @@ import tensorflow as tf
 import NaiveDE
 from anndata import AnnData
 
-from .kernels import SquaredExponential, Cosine, Linear
+from ._internal.kernels import SquaredExponential, Cosine, Linear
 from ._internal.models import Model, Constant, Null, model_factory
 from ._internal.util import (
     DistanceCache,
