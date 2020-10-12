@@ -94,8 +94,11 @@ def test_spatial_interactions(
 
 def fit_spatial_interactions(
     adata: AnnData,
-    genes: List[str],
+    genes: Optional[List[str]],
     spatial_key: str = "spatial",
+    ncomponents: int = 1,
+    ard: bool = False,
+    sizefactors: Optional[np.ndarray] = None,
 ) -> pd.DataFrame:
     if (
         "svca" not in adata.varm
@@ -103,17 +106,36 @@ def fit_spatial_interactions(
         or "svca_ncomponents" not in adata.uns
         or "svca_ard" not in adata.uns
     ):
-        raise ValueError("SVCA parameters not found in adata. Run test_spatial_interactions first.")
+        warnings.warn("SVCA parameters not found in adata. Performing ab initio fitting.")
+        if genes is None:
+            genes = adata.var_names
+        if sizefactors is None:
+            sizefactors = calc_sizefactors(adata)
+        if ncomponents < 1:
+            warnings.warn(
+                f"ncomponents must be 1 or larger, but received {ncomponents}. Setting ncomponents=1"
+            )
+            ncomponents = 1
+        trainable = True
+    else:
+        if genes is None:
+            warnings.warn("No genes given. Fitting all genes.")
+            genes = adata.var_names
+        sizefactors = adata.obsm["svca_sizefactors"]
+        ard = adata.uns["svca_ard"]
+        ncomponents = adata.uns["svca_ncomponents"]
+        trainable = False
 
-    sizefactors = adata.obsm["svca_sizefactors"]
     X = adata.obsm[spatial_key]
 
     kernels = []
-    lengthscales = [1] * X.shape[1] if adata.uns["svca_ard"] else 1
-    periods = [1] * X.shape[1] if adata.uns["svca_ard"] else 1
-    for i in range(adata.uns["svca_ncomponents"]):
+    lengthscales = [1] * X.shape[1] if ard else 1
+    periods = [1] * X.shape[1] if ard else 1
+    for i in range(ncomponents):
         k = Spectral(lengthscales=lengthscales, periods=periods)
-        gpflow.set_trainable(k, False)
+        gpflow.set_trainable(k.variance, False)
+        gpflow.set_trainable(k.lengthscales, trainable)
+        gpflow.set_trainable(k.periods, trainable)
         kernels.append(k)
     kernel = SpectralMixture(kernels)
 
@@ -123,14 +145,16 @@ def fit_spatial_interactions(
 
     idx = np.argsort(adata.var_names)
     idx = idx[np.searchsorted(adata.var_names.to_numpy(), genes, sorter=idx)]
-    param_names = adata.varm["svca"].dtype.names
+    if not trainable:
+        param_names = adata.varm["svca"].dtype.names
 
     results = []
-    for i, g in zip(idx, tqdm(genes)):
+    for g, i in zip(tqdm(genes), idx):
         model.currentgene = i
-        gpflow.utilities.multiple_assign(
-            model.kernel, {n: v for n, v in zip(param_names, adata.varm["svca"][i])}
-        )
+        if not trainable:
+            gpflow.utilities.multiple_assign(
+                model.kernel, {n: v for n, v in zip(param_names, adata.varm["svca"][i])}
+            )
         t0 = time()
         model.optimize()
         t = time() - t0
