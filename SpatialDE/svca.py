@@ -19,6 +19,27 @@ from ._internal.util import get_l_limits, bh_adjust, calc_sizefactors
 from ._internal.distance_cache import DistanceCache
 
 
+def _make_kernel(ncomponents, ard, l_min, l_max):
+    kernels = []
+    for l in np.geomspace(l_min, l_max, ncomponents):
+        if ard:
+            lengthscales = [l] * X.shape[1]
+            periods = [l_max] * X.shape[1]
+        else:
+            lengthscales = l
+            periods = l_max
+        k = Spectral(variance=1, lengthscales=lengthscales, periods=periods)
+        gpflow.set_trainable(k.variance, False)
+        k.lengthscales.transform = tfp.bijectors.Sigmoid(
+            low=to_default_float(0.5 * l_min), high=to_default_float(2 * l_max)
+        )
+        k.periods.transform = tfp.bijectors.Sigmoid(
+            low=to_default_float(0.5 * l_min), high=to_default_float(2 * l_max)
+        )
+        kernels.append(k)
+    return SpectralMixture(kernels)
+
+
 def test_spatial_interactions(
     adata: AnnData,
     spatial_key: str = "spatial",
@@ -38,24 +59,7 @@ def test_spatial_interactions(
 
     X = adata.obsm[spatial_key]
     l_min, l_max = get_l_limits(DistanceCache(X))
-    kernels = []
-    for l in np.geomspace(l_min, l_max, ncomponents):
-        if ard:
-            lengthscales = [l] * X.shape[1]
-            periods = [l_max] * X.shape[1]
-        else:
-            lengthscales = l
-            periods = l_max
-        k = Spectral(variance=1, lengthscales=lengthscales, periods=periods)
-        gpflow.set_trainable(k.variance, False)
-        k.lengthscales.transform = tfp.bijectors.Sigmoid(
-            low=to_default_float(0.5 * l_min), high=to_default_float(2 * l_max)
-        )
-        k.periods.transform = tfp.bijectors.Sigmoid(
-            low=to_default_float(0.5 * l_min), high=to_default_float(2 * l_max)
-        )
-        kernels.append(k)
-    kernel = SpectralMixture(kernels)
+    kernel = _make_kernel(ncomponents, ard, l_min, l_max)
 
     results = []
     parameters = []
@@ -127,17 +131,8 @@ def fit_spatial_interactions(
         trainable = False
 
     X = adata.obsm[spatial_key]
-
-    kernels = []
-    lengthscales = [1] * X.shape[1] if ard else 1
-    periods = [1] * X.shape[1] if ard else 1
-    for i in range(ncomponents):
-        k = Spectral(lengthscales=lengthscales, periods=periods)
-        gpflow.set_trainable(k.variance, False)
-        gpflow.set_trainable(k.lengthscales, trainable)
-        gpflow.set_trainable(k.periods, trainable)
-        kernels.append(k)
-    kernel = SpectralMixture(kernels)
+    l_min, l_max = get_l_limits(DistanceCache(X))
+    kernel = _make_kernel(ncomponents, ard, l_min, l_max)
 
     model = SVCA(adata.X, X, sizefactors, kernel)
     model.use_interactions(True)

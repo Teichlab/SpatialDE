@@ -184,7 +184,7 @@ class SVCA(tf.Module):
     def fraction_variance(self):
         intrinsic = gower_factor(self.intrinsic_variance)
         environ = gower_factor(self.environmental_variance)
-        noise = gower_factor(tf.eye(self._ncells, dtype=default_float()), self.noise_variance)
+        noise = self.noise_variance
 
         totalgower = intrinsic + environ + noise
         if self._use_interactions:
