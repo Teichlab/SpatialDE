@@ -26,7 +26,7 @@ class SVCA(tf.Module):
         kernel: Optional[gpflow.kernels.Kernel] = None,
     ):
         self.expression = to_default_float(expression)
-        self.sizefactors = sizefactors
+        self.sizefactors = to_default_float(sizefactors)
         self._ncells, self._ngenes = tf.shape(self.expression)
         self._X = to_default_float(X)
 
@@ -87,7 +87,7 @@ class SVCA(tf.Module):
             else idx
         )
         self._current_expression.assign(
-            tf.gather(self.expression, idx, axis=1) / self._log_sizefactors[:, tf.newaxis]
+            tf.gather(self.expression, idx, axis=1) / self._sizefactors[:, tf.newaxis]
         )
 
         intvar = tf.matmul(self._current_expression, self._current_expression, transpose_b=True)
@@ -97,7 +97,15 @@ class SVCA(tf.Module):
         muhat = tf.where(muhat < 1, 1, muhat)  # avoid problems with log link
         self.muhat.assign(muhat)
 
-        self._sigmas.assign(tf.ones((4,)))
+        self._sigmas.assign(
+            tf.fill(
+                (4,),
+                0.25
+                * tf.math.reduce_variance(
+                    tf.math.log(self.expression[:, gene] + 1) - self._log_sizefactors
+                ),
+            )
+        )
         if self._kernel is not None:
             gpflow.utilities.multiple_assign(self._kernel, self._init_kern)
 
