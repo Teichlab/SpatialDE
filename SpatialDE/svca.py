@@ -108,7 +108,6 @@ def fit_spatial_interactions(
 
     model = SVCA(adata.X, X, sizefactors, kernel)
     model.use_interactions(True)
-    opt = MultiScipyOptimizer(lambda: -model.profile_log_reml(), model.trainable_variables)
 
     idx = np.argsort(adata.var_names)
     idx = idx[np.searchsorted(adata.var_names.to_numpy(), genes, sorter=idx)]

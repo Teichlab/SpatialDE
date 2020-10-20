@@ -110,34 +110,35 @@ class SVCA(tf.Module):
             gpflow.utilities.multiple_assign(self._kernel, self._init_kern)
 
     def profile_log_reml(self):
-        V = self.V()
-        r = self.r()
-        cholvar = tf.linalg.cholesky(V)
+        Vchol = tf.linalg.cholesky(self.V())
+        r = self._r(Vchol)
         quad = tf.tensordot(
             r,
-            tf.squeeze(tf.linalg.cholesky_solve(cholvar, r[:, tf.newaxis])),
+            tf.squeeze(tf.linalg.cholesky_solve(Vchol, r[:, tf.newaxis])),
             axes=(-1, -1),
         )
-        ldet = tf.reduce_sum(tf.math.log(tf.linalg.diag_part(cholvar)))
+        ldet = tf.reduce_sum(tf.math.log(tf.linalg.diag_part(Vchol)))
         ldet2 = tf.math.log(
             tf.reduce_sum(
-                tf.linalg.cholesky_solve(cholvar, tf.ones((self._ncells, 1), dtype=default_float()))
+                tf.linalg.cholesky_solve(Vchol, tf.ones((self._ncells, 1), dtype=default_float()))
             )
         )
 
         return -ldet - 0.5 * quad - 0.5 * ldet2
 
-    def alphahat(self):
-        Vchol = tf.linalg.cholesky(self.V())
+    def _alphahat(self, Vchol):
         Vinvnu = tf.linalg.cholesky_solve(Vchol, self.nu[:, tf.newaxis])
         VinvX = tf.linalg.cholesky_solve(Vchol, tf.ones((self._ncells, 1), dtype=default_float()))
         return tf.reduce_sum(Vinvnu) / tf.reduce_sum(VinvX)
 
+    def alphahat(self):
+        return self._alphahat(tf.linalg.cholesky(self.V()))
+
+    def _betahat(self, Vchol):
+        return tf.squeeze(self.D() @ tf.linalg.cholesky_solve(Vchol, self._r(Vchol)[:, tf.newaxis]))
+
     def betahat(self):
-        Vchol = tf.linalg.cholesky(
-            self.V()
-        )  # we could use tf.linalg.solve directly, but then TF's graph optimizer would not be able to optmize alphahat+betahat calculation
-        return tf.squeeze(self.D() @ tf.linalg.cholesky_solve(Vchol, self.r()[:, tf.newaxis]))
+        return self._betahat(tf.linalg.cholesky(self.V()))
 
     @property
     def nu(self):
@@ -148,12 +149,15 @@ class SVCA(tf.Module):
             - self._log_sizefactors
         )
 
-    def r(self):
-        return self.nu - self.alphahat()
+    def _r(self, Vchol):
+        return self.nu - self._alphahat(Vchol)
 
     @tf.function
     def estimate_muhat(self):
-        self.muhat.assign(tf.exp(self.alphahat() + self.betahat() + self._log_sizefactors))
+        Vchol = tf.linalg.cholesky(self.V())
+        self.muhat.assign(
+            tf.exp(self._alphahat(Vchol) + self._betahat(Vchol) + self._log_sizefactors)
+        )
 
     def V(self):
         V = self.D()
