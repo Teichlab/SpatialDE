@@ -152,6 +152,10 @@ class SVCA(tf.Module):
     def _r(self, Vchol):
         return self.nu - self._alphahat(Vchol)
 
+    def r(self):
+        Vchol = tf.linalg.cholesky(self.V())
+        return self._r(Vchol)
+
     @tf.function
     def estimate_muhat(self):
         Vchol = tf.linalg.cholesky(self.V())
