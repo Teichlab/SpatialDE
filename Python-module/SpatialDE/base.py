@@ -36,6 +36,7 @@ def get_l_limits(X):
 ## Kernels ##
 
 def SE_kernel(X, l):
+    X = np.array(X)
     Xsq = np.sum(np.square(X), 1)
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 1e-12, np.inf)
@@ -52,6 +53,7 @@ def cosine_kernel(X, p):
 
     Easier interpretable composability with SE?
     '''
+    X = np.array(X)
     Xsq = np.sum(np.square(X), 1)
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 1e-12, np.inf)
