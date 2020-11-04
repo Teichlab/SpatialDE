@@ -118,7 +118,7 @@ def test(
                 havenull = False
             with tqdm(total=adata.n_vars) as pbar:
                 for null, (i, (y, g)) in zip_longest(
-                    nullit, AnnDataDataset(adata, dtype=test.dtype).enumerate()
+                    nullit, AnnDataDataset(adata, dtype=default_float()).enumerate()
                 ):
                     i = i.numpy()
                     g = g.numpy().decode("utf-8")
