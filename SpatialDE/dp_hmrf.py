@@ -314,7 +314,7 @@ def tissue_segmentation(
         toreturn = None
     labels = labels.numpy()
     pihat = pihat.numpy().T
-    adata.obs["segmentation_labels"] = labels
+    adata.obs["segmentation_labels"] = pd.Categorical(labels)
     adata.obsm["segmentation_class_probabilities"] = pihat
     return (
         TissueSegmentation(
