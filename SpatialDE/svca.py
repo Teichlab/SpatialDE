@@ -14,7 +14,7 @@ import tensorflow_probability as tfp
 
 from ._internal.svca import SVCA, SVCAInteractionScoreTest
 from ._internal.optimizer import MultiScipyOptimizer
-from ._internal.util import get_l_limits, bh_adjust, calc_sizefactors
+from ._internal.util import get_l_limits, bh_adjust, calc_sizefactors, dense_slice
 from ._internal.distance_cache import DistanceCache
 
 
@@ -39,7 +39,7 @@ def test_spatial_interactions(
 
     results = []
     parameters = []
-    test = SVCAInteractionScoreTest(adata.X, X, sizefactors, kernel)
+    test = SVCAInteractionScoreTest(dense_slice(adata.X), X, sizefactors, kernel)
 
     params = gpflow.utilities.parameter_dict(test.kernel[0])
     sortedkeys = sorted(params.keys())
@@ -106,7 +106,7 @@ def fit_spatial_interactions(
     )
     gpflow.set_trainable(kernel.variance, False)
 
-    model = SVCA(adata.X, X, sizefactors, kernel)
+    model = SVCA(dense_slice(adata.X), X, sizefactors, kernel)
     model.use_interactions(True)
 
     idx = np.argsort(adata.var_names)
