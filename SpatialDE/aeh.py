@@ -266,14 +266,15 @@ def spatial_patterns(
     spatial_key="spatial",
     params: SpatialPatternParameters = SpatialPatternParameters(),
     rng: np.random.Generator = np.random.default_rng(),
+    copy: bool = False,
 ) -> SpatialPatterns:
     if not normalized and genes is None:
         warnings.warn(
             "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."
         )
-    if not normalized:
-        adata = normalize_counts(adata, copy=True)
-    data = adata[:, genes] if genes is not None else adata
+    data = normalize_counts(adata, copy=True) if not normalized else adata
+    if genes is not None:
+        data = data[:, genes]
 
     X = data.obsm[spatial_key]
     counts = data.X
@@ -319,13 +320,25 @@ def spatial_patterns(
         everything=True,
     )
     pihat = tf.linalg.normalize(tf.gather(patterns.pihat, idx, axis=1), ord=1, axis=1)[0]
+    patterns = tf.gather(patterns.mu_hat, idx, axis=1).numpy()
 
-    return SpatialPatterns(
-        converged=res.success,
-        status=res.message,
-        labels=labels.numpy(),
-        pattern_probabilities=pihat.numpy(),
-        patterns=tf.gather(patterns.mu_hat, idx, axis=1).numpy(),
-        niter=res.nit,
-        elbo_trace=np.asarray(elbo_trace),
+    if copy:
+        adata = adata.copy()
+        toreturn = adata
+    else:
+        toreturn = None
+    for i in range(patterns.shape[1]):
+        adata.obs[f"spatial_pattern_{i}"] = patterns[:, i]
+
+    return (
+        SpatialPatterns(
+            converged=res.success,
+            status=res.message,
+            labels=labels.numpy(),
+            pattern_probabilities=pihat.numpy(),
+            patterns=patterns,
+            niter=res.nit,
+            elbo_trace=np.asarray(elbo_trace),
+        ),
+        toreturn,
     )

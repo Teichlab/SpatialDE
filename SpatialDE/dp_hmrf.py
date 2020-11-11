@@ -306,7 +306,6 @@ def tissue_segmentation(
     gammahat_1 = tf.gather(gammahat_1, idx, axis=0)
     gammahat_2 = tf.gather(gammahat_2, idx, axis=0)
 
-    ret_data = None
     if copy:
         adata = adata.copy()
         toreturn = adata
