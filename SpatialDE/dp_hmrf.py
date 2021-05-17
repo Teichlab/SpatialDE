@@ -158,9 +158,10 @@ def _segment(
 
 def tissue_segmentation(
     adata: AnnData,
+    layer: str = None,
     genes: Optional[List[str]] = None,
     sizefactors: Optional[np.ndarray] = None,
-    spatial_key="spatial",
+    spatial_key: str = "spatial",
     params: TissueSegmentationParameters = TissueSegmentationParameters(),
     labels: Optional[Union[np.ndarray, tf.Tensor]] = None,
     rng: np.random.Generator = np.random.default_rng(),
@@ -173,7 +174,7 @@ def tissue_segmentation(
         )
 
     if sizefactors is None:
-        sizefactors = calc_sizefactors(adata)
+        sizefactors = calc_sizefactors(adata, layer=layer)
     if genes is not None:
         ngenes = len(genes)
         data = adata[:, genes]
@@ -204,7 +205,9 @@ def tissue_segmentation(
     eta_1 = tf.convert_to_tensor(params.eta_1, dtype=dtype)
     eta_2 = tf.convert_to_tensor(params.eta_2, dtype=dtype)
 
-    counts = tf.convert_to_tensor(dense_slice(data.X), dtype=dtype)
+    counts = tf.convert_to_tensor(
+        dense_slice(data.X if layer is None else data.layers[layer]), dtype=dtype
+    )
 
     distances = None
     if X is not None and (params.neighbors is None or params.neighbors > 0):

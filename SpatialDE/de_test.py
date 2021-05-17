@@ -57,6 +57,7 @@ def _merge_individual_results(individual_results):
 
 def test(
     adata: AnnData,
+    layer: str = None,
     omnibus: bool = False,
     spatial_key="spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
@@ -86,7 +87,7 @@ def test(
 
         results = []
         with tqdm(total=adata.n_vars) as pbar:
-            for i, (y, g) in AnnDataDataset(adata, dtype=default_float()).enumerate():
+            for i, (y, g) in AnnDataDataset(adata, dtype=default_float(), layer=layer).enumerate():
                 i = i.numpy()
                 g = g.numpy().decode("utf-8")
                 t0 = time()
@@ -118,7 +119,7 @@ def test(
                 havenull = False
             with tqdm(total=adata.n_vars) as pbar:
                 for null, (i, (y, g)) in zip_longest(
-                    nullit, AnnDataDataset(adata, dtype=default_float()).enumerate()
+                    nullit, AnnDataDataset(adata, dtype=default_float(), layer=layer).enumerate()
                 ):
                     i = i.numpy()
                     g = g.numpy().decode("utf-8")

@@ -23,13 +23,18 @@ def get_dtype(df: pd.DataFrame, msg="Data frame"):
     return dtys[0]
 
 
-def normalize_counts(adata: AnnData, copy=False):
+def normalize_counts(adata: AnnData, layer=None, copy=False):
     if copy:
         adata = adata.copy()
 
-    sizefactors = pd.DataFrame({"sizefactors": calc_sizefactors(adata)})
-    stabilized = NaiveDE.stabilize(dense_slice(adata.X.T))
-    adata.X = NaiveDE.regress_out(sizefactors, stabilized, "np.log(sizefactors)").T
+    sizefactors = pd.DataFrame({"sizefactors": calc_sizefactors(adata, layer=layer)})
+    X = adata.X if layer is None else adata.layers[layer]
+    stabilized = NaiveDE.stabilize(dense_slice(X.T))
+    regressed = NaiveDE.regress_out(sizefactors, stabilized, "np.log(sizefactors)").T
+    if layer is None:
+        adata.X = regressed
+    else:
+        adata.layers[layer] = regressed
     return adata
 
 
@@ -47,8 +52,9 @@ def bh_adjust(pvals):
     return alpha[np.argsort(order)]
 
 
-def calc_sizefactors(adata: AnnData):
-    return np.asarray(adata.X.sum(axis=1)).squeeze()
+def calc_sizefactors(adata: AnnData, layer=None):
+    X = adata.X if layer is None else adata.layers[layer]
+    return np.asarray(X.sum(axis=1)).squeeze()
 
 
 def get_l_limits(cache: DistanceCache):

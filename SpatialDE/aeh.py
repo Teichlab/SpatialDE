@@ -264,6 +264,7 @@ def spatial_patterns(
     genes: Optional[List[str]] = None,
     normalized=False,
     spatial_key="spatial",
+    layer: str = None,
     params: SpatialPatternParameters = SpatialPatternParameters(),
     rng: np.random.Generator = np.random.default_rng(),
     copy: bool = False,
@@ -277,7 +278,7 @@ def spatial_patterns(
         data = data[:, genes]
 
     X = data.obsm[spatial_key]
-    counts = data.X
+    counts = data.X if layer is None else adata.layers[layer]
 
     # This is important, we only care about co-expression, not absolute levels.
     counts = counts - tf.reduce_mean(counts, axis=0)
