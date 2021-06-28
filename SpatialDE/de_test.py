@@ -62,18 +62,20 @@ def test(
     spatial_key="spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
     sizefactors: Optional[np.ndarray] = None,
+    stack_kernels: Optional[bool] = None,
+    use_cache: bool = True,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     logging.info("Performing DE test")
 
     X = adata.obsm[spatial_key]
-    dcache = DistanceCache(X)
+    dcache = DistanceCache(X, use_cache)
     if sizefactors is None:
         sizefactors = calc_sizefactors(adata)
     if kernel_space is None:
         kernel_space = default_kernel_space(dcache)
 
     individual_results = None if omnibus else []
-    if adata.n_obs <= 2000 or omnibus:
+    if stack_kernels is None and adata.n_obs <= 2000 or stack_kernels or omnibus:
         kernels = []
         kernelnames = []
         for k, name in kspace_walk(kernel_space, dcache):
