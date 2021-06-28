@@ -86,9 +86,10 @@ class ScoreTest(ABC):
             return self._calc_test(stat, e_tilde, I_tau_tau), nullmodel
         except TypeError as e:
             if y.dtype is not default_float():
-                raise TypeError(
-                    f"Value vector has wrong dtype. Expected: {repr(default_float())}, given: {repr(y.dtype)}"
-                )
+                raise
+            # raise TypeError(
+            #     f"Value vector has wrong dtype. Expected: {repr(default_float())}, given: {repr(y.dtype)}"
+            # )
             else:
                 raise
 
@@ -163,7 +164,7 @@ class NegativeBinomialScoreTest(ScoreTest):
         omnibus: bool = False,
         kernel: Optional[Union[Kernel, List[Kernel]]] = None,
     ):
-        self.sizefactors = tf.squeeze(to_default_float(sizefactors))
+        self.sizefactors = tf.squeeze(tf.cast(sizefactors, tf.float64))
         if tf.rank(self.sizefactors) > 1:
             raise ValueError("Size factors vector must have rank 1")
 
@@ -175,7 +176,7 @@ class NegativeBinomialScoreTest(ScoreTest):
         super().__init__(omnibus, kernel, yidx)
 
     def _fit_null(self, y: tf.Tensor) -> NullModel:
-        scaledy = y / self.sizefactors
+        scaledy = tf.cast(y, tf.float64) / self.sizefactors
         res = minimize(
             lambda *args: self._negative_negbinom_loglik(*args).numpy(),
             x0=[
@@ -184,7 +185,7 @@ class NegativeBinomialScoreTest(ScoreTest):
                     tf.maximum(1e-8, self._moments_dispersion_estimate(scaledy, self.sizefactors))
                 ),
             ],
-            args=(y, self.sizefactors),
+            args=(tf.cast(y, tf.float64), self.sizefactors),
             jac=lambda *args: self._grad_negative_negbinom_loglik(*args).numpy(),
             method="bfgs",
         )
