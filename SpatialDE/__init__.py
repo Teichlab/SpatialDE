@@ -2,7 +2,7 @@ from .version import version as __version__
 
 from .de_test import test
 
-from .gaussian_process import GP, GPControl, fit, fit_fast, fit_detailed
+from .gaussian_process import GP, SGPIPM, GPControl, fit, fit_fast, fit_detailed
 from .dp_hmrf import (
     tissue_segmentation,
     TissueSegmentationParameters,

@@ -1,4 +1,4 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple
 import warnings
 from dataclasses import dataclass
 from collections import namedtuple
@@ -22,6 +22,23 @@ from ._internal.util_mixture import prune_components, prune_labels
 
 @dataclass(frozen=True)
 class SpatialPatternParameters:
+    """
+    Parameters for automated expession histology.
+
+    Args:
+        nclasses: Maximum number of regions to consider. Defaults to the square root of the number of observations.
+        lengthscales: List of kernel lenthscales. Defaults to a single lengthscale of the minimum distance between
+            observations.
+        pattern_prune_threshold: Probability threshold at which unused patterns are removed. Defaults to ``1e-6``.
+        method: Optimization algorithm, must be known to ``scipy.optimize.minimize``. Defaults to ``l-bfgs-b``.
+        tol: Convergence tolerance. Defaults to 1e-9.
+        maxiter: Maximum number of iterations. Defaults to ``1000``.
+        gamma_1: Parameter of the noise variance prior, defaults to ``1e-14``.
+        gamma_2: Parameter of the noise variance prior, defaults to ``1e-14``.
+        eta_1: Parameter of the Dirichlet process hyperprior, defaults to ``1``.
+        eta_2: Parameter of the Dirichlet process hyperprior, defaults to ``1``.
+    """
+
     nclasses: Optional[Integral] = None
     lengthscales: Optional[Union[Real, List[Real]]] = None
     pattern_prune_threshold: float = 1e-6
@@ -58,6 +75,18 @@ class SpatialPatternParameters:
 
 @dataclass(frozen=True)
 class SpatialPatterns:
+    """
+    Results of automated expression histology.
+
+    Attributes:
+        converged: Whether the optimization converged.
+        status: Status of the optimization.
+        labels: The estimated region labels.
+        pattern_probabilities: N_obs x N_patterns array with the estimated region probabilities for each observation.
+        niter: Number of iterations for the optimization.
+        elbo_trace: ELBO values at each iteration.
+    """
+
     converged: bool
     status: str
     labels: np.ndarray
@@ -264,11 +293,34 @@ def spatial_patterns(
     genes: Optional[List[str]] = None,
     normalized=False,
     spatial_key="spatial",
-    layer: str = None,
+    layer: Optional[str] = None,
     params: SpatialPatternParameters = SpatialPatternParameters(),
     rng: np.random.Generator = np.random.default_rng(),
     copy: bool = False,
-) -> SpatialPatterns:
+) -> Tuple[SpatialPatterns, Union[AnnData, None]]:
+    """
+    Detect spatial patterns of gene expression and assign genes to patterns.
+
+    Uses a Gaussian process mixture. A Dirichlet process prior allows
+    to automatically determine the number of distinct regions in the dataset.
+
+    Args:
+        adata: The annotated data matrix.
+        genes: List of genes to base the analysis on. Defaults to all genes.
+        normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
+            If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
+        spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
+        layer: Name of the AnnData object layer to use. By default ``adata.X`` is used.
+        params: Parameters for the algorithm, e.g. prior distributions, spatial smoothness, etc.
+        rng: Random number generator.
+        copy: Whether to return a copy of ``adata`` with results or write the results into ``adata``
+            in-place.
+
+    Returns:
+        A tuple. The first element is a :py:class:`SpatialPatterns`, the second is ``None`` if ``copy == False``
+        or an ``AnnData`` object. Patterns will be in ``adata.obs["spatial_pattern_0"]``, ...,
+        ``adata.obs["spatial_pattern_n"]``.
+    """
     if not normalized and genes is None:
         warnings.warn(
             "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."

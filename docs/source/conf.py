@@ -19,7 +19,7 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = "SpatialDE"
-copyright = "2020, Ilia Kats, Valentine Svensson"
+copyright = "2021, Ilia Kats, Valentine Svensson"
 author = "Ilia Kats, Valentine Svensson"
 
 
@@ -28,7 +28,14 @@ author = "Ilia Kats, Valentine Svensson"
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ["sphinx.ext.napoleon", "sphinx.ext.autosummary", "sphinx_rtd_theme"]
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx_autodoc_typehints",
+    "sphinx.ext.autosummary",
+    "sphinx_rtd_theme",
+    "sphinx.ext.mathjax",
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -44,6 +51,12 @@ exclude_patterns = ["docs"]
 # -- docstring parsing config ------------------------------------------------
 napoleon_numpy_docstring = False
 napoleon_include_init_with_doc = False
+napoleon_include_special_with_doc = False
+napoleon_attr_annotations = True
+
+autodoc_typehints = "both"
+autodoc_preserve_defaults = True
+always_document_param_types = True
 
 
 # -- Options for HTML output -------------------------------------------------

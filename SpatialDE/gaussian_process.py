@@ -29,17 +29,38 @@ from ._internal.gpflow_helpers import *
 
 class GP(Enum):
     GPR = auto()
+    """
+    Dense Gaussian process.
+    """
     SGPR = auto()
+    """
+    Sparse Gaussian process.
+    """
 
 
 class SGPIPM(Enum):
     free = auto()
+    """Inducing points are initialized randomly and their positions are optimized together with the other parameters."""
     random = auto()
+    """Inducing points are placed at random locations."""
     grid = auto()
+    """Inducing points are placed in a regular grid."""
 
 
 @dataclass(frozen=True)
 class GPControl:
+    """
+    Parameters for Gaussian process fitting.
+
+    Args:
+        gp: Type of GP to fit.
+        ipm: Inducing point method. Only used if ``gp == GP.SGPR``.
+        ncomponents: Number of kernel components.
+        ard: Whether to use automatic relevance determination. This amounts to having one
+            lengthscale per spatial dimension.
+        ninducers: Number of inducing points.
+    """
+
     gp: Optional[GP] = None
     ipm: SGPIPM = SGPIPM.grid
     ncomponents: int = 5
@@ -102,7 +123,27 @@ def fit_detailed(
     spatial_key="spatial",
     control: Optional[GPControl] = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
-):
+) -> DataSetResults:
+    """
+    Fits Gaussian processes to genes.
+
+    A Gaussian process based on highly interpretable spectral mixture kernels (Wilson et al. 2013, Wilson 2014) is fitted
+    separately to each gene. Sparse GPs are used on large datasets (>1000 observations) to improve speed.
+    This uses a Gaussian likelihood and requires appropriate data normalization.
+
+    Args:
+        adata: The annotated data matrix.
+        genes: List of genes to base the analysis on. Defaults to all genes.
+        normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
+            If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
+        spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
+        control: Parameters for the Gaussian process, e.g. number of kernel components, number of inducing points.
+        rng: Random number generator.
+
+    Returns:
+        A dictionary with the results. The dictionary has an additional method ``to_df``, which returns a DataFrame
+        with the key results.
+    """
     if not normalized and genes is None:
         warnings.warn(
             "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."
@@ -189,6 +230,34 @@ def fit_fast(
     spatial_key="spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
 ) -> pd.DataFrame:
+    """
+    Fits Gaussian processes to genes.
+
+    This uses the inflexible but fast technique of Svensson et al. (2018). In particular, the kernel lengthscale is not
+    optimized, but must be given beforehand. Multiple kernel functions and lengthscales can be specified, the best-fitting
+    model will be retained. To further improve speed, sparse GPs are used for large (>1000 observations) data sets with
+    inducing points located on a regular grid.
+
+    Args:
+        adata: The annotated data matrix.
+        genes: List of genes to base the analysis on. Defaults to all genes.
+        normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
+            If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
+        spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
+        control: Parameters for the Gaussian process, e.g. number of kernel components, number of inducing points.
+        kernel_space: Kernels to test against. Dictionary with the name of the kernel function as key and list of
+            lengthscales (if applicable) as values. Currently, three kernel functions are known:
+
+            * ``SE``, the squared exponential kernel :math:`k(\\boldsymbol{x}^{(1)}, \\boldsymbol{x}^{(2)}; l) = \\exp\\left(-\\frac{\\lVert \\boldsymbol{x}^{(1)} - \\boldsymbol{x}^{(2)} \\rVert}{l^2}\\right)`
+            * ``PER``, the periodic kernel :math:`k(\\boldsymbol{x}^{(1)}, \\boldsymbol{x}^{(2)}; l) = \\cos\\left(2 \pi \\frac{\\sum_i (x^{(1)}_i - x^{(2)}_i)}{l}\\right)`
+            * ``linear``, the linear kernel :math:`k(\\boldsymbol{x}^{(1)}, \\boldsymbol{x}^{(2)}) = (\\boldsymbol{x}^{(1)})^\\top \\boldsymbol{x}^{(2)}`
+
+            By default, 5 squared exponential and 5 periodic kernels with lengthscales spanning the range of the
+            data will be used.
+
+    Returns:
+        A Pandas DataFrame with the results.
+    """
     if not normalized and genes is None:
         warnings.warn(
             "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."
@@ -242,11 +311,19 @@ def fit(
     adata: AnnData,
     genes: Optional[List[str]] = None,
     normalized=False,
-    spatial_key="spatial",
+    spatial_key: str = "spatial",
     control: Optional[GPControl] = GPControl(),
     kernel_space: Optional[Dict[str, float]] = None,
     rng: np.random.Generator = np.random.default_rng(),
-):
+) -> pd.DataFrame:
+    """
+    Fits Gaussian processes to genes.
+
+    This dispatches to :py:func:`fit_fast` if ``control`` is ``None``, otherwise to :py:func:`fit_detailed`.
+    All arguments are forwarded.
+
+    Returns: A Pandas DataFrame with the results.
+    """
     if control is None:
         return fit_fast(adata, genes, normalized, spatial_key, kernel_space)
     else:

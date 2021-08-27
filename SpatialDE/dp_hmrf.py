@@ -1,4 +1,4 @@
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple
 from dataclasses import dataclass
 from enum import Enum, auto
 import logging
@@ -17,6 +17,26 @@ from ._internal.util_mixture import prune_components, prune_labels
 
 @dataclass(frozen=True)
 class TissueSegmentationParameters:
+    """
+    Parameters for tissue segmentation.
+
+    Args:
+        nclasses: Maximum number of regions to consider. Defaults to the square root of the number of observations.
+        neighbors: Number of neighbors for the nearest-neighbor graph. Defaults to a fully connected graph (there is
+            no speed difference). A value of 0 makes the model ignore spatial information and reduces it to a Poisson
+            mixture model with a Dirichlet process prior.
+        smoothness_factor: Spatial smoothness. Larger values induce more fine-grained segmentations. This value will
+            be multiplied with the minimum squared distance within the data set, so it is dimensionless. Defaults to ``2``.
+        class_prune_threshold: Probability threshold at which unused regions are removed. Defaults to ``1e-6``.
+        abstol: Absolute convergence tolerance. Defaults to ``1e-12``.
+        reltol: Relative convergence tolerance. Defaults to ``1e-12``.
+        maxiter: Maximum number of iterations. Defaults to ``1000``.
+        gamma_1: Parameter of the Poisson mean prior, defaults to ``1e-14``.
+        gamma_2: Parameter of the Poisson mean prior, defaults to ``1e-14``.
+        eta_1: Parameter of the Dirichlet process hyperprior, defaults to ``1``.
+        eta_2: Parameter of the Dirichlet process hyperprior, defaults to ``1``.
+    """
+
     nclasses: Optional[int] = None
     neighbors: Optional[int] = None
     smoothness_factor: float = 2
@@ -57,6 +77,22 @@ class TissueSegmentationStatus(Enum):
 
 @dataclass(frozen=True)
 class TissueSegmentation:
+    """
+    Results of tissue segmentation.
+
+    Attributes:
+        converged: Whether the optimization converged.
+        status: Status of the optimization.
+        labels: The estimated region labels.
+        class_probabilities: N_obs x N_regions array with the estimated region probabilities for each observation.
+        gammahat_1: N_classes x N_genes array with the estimated parameter of the gene expression posterior.
+        gammahat_2: N_classes x 1 array with the estimated parameter of the gene expression posterior.
+        niter: Number of iterations for the optimization.
+        prune_iterations: Iterations at which unneeded regions were removed.
+        elbo_trace: ELBO values at each iteration.
+        nclasses_trace: Number of regions at each iteration.
+    """
+
     converged: bool
     status: TissueSegmentationStatus
     labels: np.ndarray
@@ -158,7 +194,7 @@ def _segment(
 
 def tissue_segmentation(
     adata: AnnData,
-    layer: str = None,
+    layer: Optional[str] = None,
     genes: Optional[List[str]] = None,
     sizefactors: Optional[np.ndarray] = None,
     spatial_key: str = "spatial",
@@ -166,7 +202,30 @@ def tissue_segmentation(
     labels: Optional[Union[np.ndarray, tf.Tensor]] = None,
     rng: np.random.Generator = np.random.default_rng(),
     copy=False,
-):
+) -> Tuple[TissueSegmentation, Union[AnnData, None]]:
+    """
+    Segment a spatial transcriptomics dataset into distinct spatial regions.
+
+    Uses a hidden Markov random field (HMRF) model with a Poisson likelihood. A Dirichlet process prior allows
+    to automatically determine the number of distinct regions in the dataset.
+
+    Args:
+        adata: The annotated data matrix.
+        layer: Name of the AnnData object layer to use. By default ``adata.X`` is used.
+        genes: List of genes to base the segmentation on. Defaults to all genes.
+        sizefactors: Scaling factors for the observations. Defaults to total read counts.
+        spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
+        params: Parameters for the algorithm, e.g. prior distributions, spatial smoothness, etc.
+        labels: Initial label for each observation. Defaults to a random initialization.
+        rng: Random number generator.
+        copy: Whether to return a copy of ``adata`` with results or write the results into ``adata``
+            in-place.
+
+    Returns:
+        A tuple. The first element is a :py:class:`TissueSegmentation`, the second is ``None`` if ``copy == False``
+        or an ``AnnData`` object. Region labels will be in ``adata.obs["segmentation_labels"]`` and region
+        probabilities in ``adata.obsm["segmentation_class_probabilities"]``.
+    """
     if genes is None and sizefactors is None:
         warnings.warn(
             "Neither genes nor sizefactors are given. Assuming that adata contains complete data set, will calculate size factors and perform segmentation using the complete data set.",

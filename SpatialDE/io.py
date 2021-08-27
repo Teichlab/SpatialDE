@@ -14,6 +14,16 @@ from anndata import AnnData
 
 
 def read_spaceranger(spaceranger_out_dir: str, read_images: bool = True) -> AnnData:
+    """
+    Read 10x SpaceRanger output.
+
+    Args:
+        spaceranger_out_dir: Path to the directory with SpaceRanger output.
+        read_images: Whether to also read images into memory.
+
+    Returns:
+        An annotated data matrix.
+    """
     fname = glob.glob(os.path.join(spaceranger_out_dir, "*filtered_feature_bc_matrix.h5"))
     if len(fname) == 0:
         raise FileNotFoundError(
