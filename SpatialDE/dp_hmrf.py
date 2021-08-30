@@ -80,7 +80,7 @@ class TissueSegmentation:
     """
     Results of tissue segmentation.
 
-    Attributes:
+    Args:
         converged: Whether the optimization converged.
         status: Status of the optimization.
         labels: The estimated region labels.

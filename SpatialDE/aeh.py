@@ -78,7 +78,7 @@ class SpatialPatterns:
     """
     Results of automated expression histology.
 
-    Attributes:
+    Args:
         converged: Whether the optimization converged.
         status: Status of the optimization.
         labels: The estimated region labels.
