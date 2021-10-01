@@ -257,7 +257,6 @@ def tissue_segmentation(
     fnclasses = tf.cast(nclasses, dtype=dtype)
 
     sizefactors = tf.convert_to_tensor(sizefactors[np.newaxis, :], dtype=dtype)
-    X = tf.convert_to_tensor(X, dtype=dtype)
 
     gamma_1 = tf.convert_to_tensor(params.gamma_1, dtype=dtype)
     gamma_2 = tf.convert_to_tensor(params.gamma_2, dtype=dtype)
@@ -270,6 +269,7 @@ def tissue_segmentation(
 
     distances = None
     if X is not None and (params.neighbors is None or params.neighbors > 0):
+        X = tf.convert_to_tensor(X, dtype=dtype)
         distances = square_distance(X, None)
         if params.neighbors is not None and params.neighbors < nsamples:
             distances, indices = tf.math.top_k(-distances, k=params.neighbors + 1, sorted=True)
