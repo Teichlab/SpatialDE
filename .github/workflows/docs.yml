@@ -20,6 +20,7 @@ jobs:
           ${{ runner.os }}-pip-
           ${{ runner.os }}-
     - run: pip install .[docs]
+    - run: pip install patsy # missing dep of NaiveDE
     - name: test SpatialDE import
       run: python3 -m SpatialDE
     - name: Running the Sphinx to gh-pages Action
