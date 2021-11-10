@@ -12,8 +12,11 @@ from gpflow.utilities import to_default_float
 
 class Spectral(Stationary):
     def __init__(self, variance=1.0, lengthscales=1, periods=1, **kwargs):
-        super().__init__(variance=variance, lengthscales=lengthscales, **kwargs)
-        self.lengthscales.transform = positive(lower=to_default_float(1e-6))
+        super().__init__(
+            variance=variance,
+            lengthscales=Parameter(lengthscales, transform=positive(lower=to_default_float(1e-6))),
+            **kwargs,
+        )
         self.periods = Parameter(periods, transform=positive(lower=to_default_float(1e-6)))
 
         self._validate_ard_active_dims(self.periods)

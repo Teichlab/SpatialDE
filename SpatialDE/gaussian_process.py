@@ -152,16 +152,17 @@ def fit_detailed(
     data = adata[:, genes] if genes is not None else adata
 
     X = data.obsm[spatial_key]
-    counts = data.X
 
     if not normalized:
-        counts = normalize_counts(counts)
+        adata = normalize_counts(adata, copy=True)
+    counts = data.X
 
-    if control.gp is None:
+    gp = control.gp
+    if gp is None:
         if data.n_obs < 1000:
-            control.gp = GP.GPR
+            gp = GP.GPR
         else:
-            control.gp = GP.SGPR
+            gp = GP.SGPR
 
     results = DataSetResults()
     X = tf.convert_to_tensor(X, dtype=gpflow.config.default_float())
@@ -169,7 +170,7 @@ def fit_detailed(
     opt = gpflow.optimizers.Scipy()
 
     logging.info("Fitting gene models")
-    if control.gp == GP.GPR:
+    if gp == GP.GPR:
         for g, gene in enumerate(t):
             t.set_description(gene, refresh=False)
             model = GPR(
@@ -182,7 +183,7 @@ def fit_detailed(
                 ard=control.ard,
             )
             results[gene] = GeneGP(model, opt.minimize, method="bfgs")
-    elif control.gp == GP.SGPR:
+    elif gp == GP.SGPR:
         ninducers = (
             np.ceil(np.sqrt(data.n_obs)).astype(np.int32)
             if control.ninducers is None

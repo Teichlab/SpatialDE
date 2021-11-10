@@ -74,12 +74,20 @@ class GeneGPModel(metaclass=ABCMeta):
         maxvar = 10 * tf.math.reduce_variance(Y)
         kernels = []
         for v in np.linspace(minvar, np.minimum(1, 0.9 * maxvar), ncomponents):
-            k = Spectral(variance=v, lengthscales=varinit, periods=periodinit)
-            k.lengthscales.transform = tfp.bijectors.Sigmoid(low=0.1 * min_1nndist, high=datarange)
-            k.periods.transform = tfp.bijectors.Sigmoid(low=minperiod, high=2 * datarange)
-            k.variance.transform = tfp.bijectors.Sigmoid(
-                low=gpflow.utilities.to_default_float(0),
-                high=gpflow.utilities.to_default_float(maxvar),
+            k = Spectral(
+                variance=gpflow.Parameter(
+                    v,
+                    transform=tfp.bijectors.Sigmoid(
+                        low=gpflow.utilities.to_default_float(0),
+                        high=gpflow.utilities.to_default_float(maxvar),
+                    ),
+                ),
+                lengthscales=gpflow.Parameter(
+                    varinit, transform=tfp.bijectors.Sigmoid(low=0.1 * min_1nndist, high=datarange)
+                ),
+                periods=gpflow.Parameter(
+                    periodinit, transform=tfp.bijectors.Sigmoid(low=minperiod, high=2 * datarange)
+                ),
             )
             kernels.append(k)
         kern = SpectralMixture(kernels)
@@ -100,9 +108,9 @@ class GPR(gpflow.models.GPR, GeneGPModel):
 
     def freeze(self):
         X = self.data[0]
-        self.data[0] = None
+        self.data = (None, self.data[1])
         frozen = gpflow.utilities.freeze(self)
-        frozen.data[0] = self.data[0] = X
+        frozen.data = self.data = (X, self.data[1])
         return frozen
 
 
@@ -126,16 +134,19 @@ class SGPR(gpflow.models.SGPR, GeneGPModel):
 
     def freeze(self):
         X = self.data[0]
-        self.data[0] = None
+        self.data = (None, self.data[1])
 
         trainable_inducers = self.inducing_variable.Z.trainable
         if not trainable_inducers:
             Z = self.inducing_variable.Z
         frozen = gpflow.utilities.freeze(self)
-        frozen.data[0] = self.data[0] = X
+        frozen.data = self.data = (X, self.data[1])
         if not trainable_inducers:
             frozen.inducing_variable.Z = Z
         return frozen
+
+    def log_marginal_likelihood(self):
+        return self.elbo()
 
 
 @dataclass(frozen=True)
@@ -162,9 +173,9 @@ class GeneGP(Model):
 
         self._trainable_variance_idx = []
         offset = 0
-        variancevars = set([v.experimental_ref() for v in self._variancevars])
+        variancevars = set(self._variancevars)
         for v in self.model.parameters:
-            if v.experimental_ref() in variancevars:
+            if v in variancevars:
                 self._trainable_variance_idx.extend([offset + int(i) for i in range(tf.size(v))])
                 offset += int(tf.size(v))
 
@@ -273,7 +284,9 @@ class GeneGP(Model):
             totalvar = tf.reduce_sum(variances)
             variance_fractions = variances / totalvar
 
-        grads = t.jacobian(variance_fractions, self._variancevars)
+        grads = t.jacobian(
+            variance_fractions, [v.unconstrained_variable for v in self._variancevars]
+        )
         grads = tf.concat([tf.expand_dims(g, -1) if g.ndim < 2 else g for g in grads], axis=1)
         errors = tf.reduce_sum((grads @ self._invHess) * grads, axis=1)
 
