@@ -61,6 +61,8 @@ running ``git lfs pull`` from inside any repository directory.
 .. |git-lfs| replace:: ``git lfs``
 .. _git-lfs: https://git-lfs.github.com/
 
+If you are having problems using ``git lfs``, all the data are available on figshare here: https://figshare.com/articles/software/SpatialDE/17065217
+
 Below follows a typical usage example in interactive form.
 
 SpatialDE significance test example use
