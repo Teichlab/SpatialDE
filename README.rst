@@ -685,7 +685,7 @@ weak threshold. But in typical use, filter by ``qval < 0.05``
 
 .. code:: python
 
-    sign_results = results.query('qval < 0.5')
+    sign_results = results.query('qval < 0.05')
 
 AEH requires two parameters: the number of patterns, and the
 characteristic lengthscale for histological patterns.
