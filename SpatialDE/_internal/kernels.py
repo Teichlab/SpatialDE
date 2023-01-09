@@ -80,7 +80,7 @@ class StationaryKernel(Kernel):
 class SquaredExponential(StationaryKernel):
     def _K(self, X: Optional[tf.Tensor] = None, Y: Optional[tf.Tensor] = None, cache: bool = False):
         if cache:
-            dist = self._cache.squaredEuclideanDistance / self.lengthscale ** 2
+            dist = self._cache.squaredEuclideanDistance / self.lengthscale**2
         else:
             dist = scaled_squared_distance(X, Y, self.lengthscale)
         return tf.exp(-0.5 * dist)

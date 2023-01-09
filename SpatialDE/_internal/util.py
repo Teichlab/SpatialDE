@@ -30,7 +30,7 @@ def normalize_counts(adata: AnnData, layer=None, copy=False):
     sizefactors = pd.DataFrame({"sizefactors": calc_sizefactors(adata, layer=layer)})
     X = adata.X if layer is None else adata.layers[layer]
     stabilized = NaiveDE.stabilize(dense_slice(X.T))
-    regressed = NaiveDE.regress_out(sizefactors, stabilized, "np.log(sizefactors)").T
+    regressed = np.asarray(NaiveDE.regress_out(sizefactors, stabilized, "np.log(sizefactors)").T)
     if layer is None:
         adata.X = regressed
     else:
@@ -41,6 +41,8 @@ def normalize_counts(adata: AnnData, layer=None, copy=False):
 def dense_slice(slice):
     if issparse(slice):
         slice = slice.toarray()
+    else:
+        slice = np.asarray(slice)  # work around anndata.ArrayView
     return np.squeeze(slice)
 
 

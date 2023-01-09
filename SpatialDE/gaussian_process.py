@@ -151,13 +151,12 @@ def fit_detailed(
             "normalized is False and no genes are given. Assuming that adata contains complete data set, will normalize and fit a GP for every gene."
         )
 
-    data = adata[:, genes] if genes is not None else adata
-
-    X = data.obsm[spatial_key]
-
     if not normalized:
         adata = normalize_counts(adata, layer, copy=True)
-    counts = data.X if layer is None else adata.layers[layer]
+
+    data = adata[:, genes] if genes is not None else adata
+    X = data.obsm[spatial_key]
+    counts = data.X if layer is None else data.layers[layer]
 
     gp = control.gp
     if gp is None:
@@ -274,7 +273,7 @@ def fit_fast(
     data = adata[:, genes] if genes is not None else adata
 
     X = data.obsm[spatial_key]
-    counts = data.X if layer is None else adata.layers[layer]
+    counts = data.X if layer is None else data.layers[layer]
 
     dcache = DistanceCache(X)
     if kernel_space is None:

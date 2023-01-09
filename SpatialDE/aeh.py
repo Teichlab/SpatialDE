@@ -249,7 +249,7 @@ class _SpatialPatterns(tf.Module):
                 UTybar, k.Lambda / Lambdahat * UTybar, axes=(-1, -1)
             )
             pimu = N[c] * (
-                sigmahat ** 3
+                sigmahat**3
                 * tf.tensordot(UTybar * tf.square(k.Lambda / Lambdahat), UTybar, axes=(-1, -1))
                 + tf.reduce_sum(k.Lambda / Lambdahat)
             )

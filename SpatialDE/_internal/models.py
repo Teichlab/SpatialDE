@@ -259,7 +259,7 @@ class GPModel(Model):
         ld = self.logdelta
         der = derivative(self._objective(lambda: self.FSV), self.logdelta, n=1)
         self.logdelta = ld
-        return der ** 2 / self.s2_logdelta
+        return der**2 / self.s2_logdelta
 
 
 class SGPR(GPModel):
@@ -281,12 +281,12 @@ class SGPR(GPModel):
         self._B = U.T @ LK_uf
         self._B1 = np.sum(self._B, axis=-1)
         self._By = None
-        self._traceterm = np.sum(K_ff) - np.sum(LK_uf ** 2)
+        self._traceterm = np.sum(K_ff) - np.sum(LK_uf**2)
 
         return self
 
     def __exit__(self, *args):
-        super().__exit(*args)
+        super().__exit__(*args)
         self._Lambda = None
         self._B = None
         self._B1 = None
@@ -310,9 +310,9 @@ class SGPR(GPModel):
     def _residual_quadratic(self) -> float:
         self._check_y()
         return (
-            np.sum(self.y ** 2)
+            np.sum(self.y**2)
             - 2 * np.sum(self.y) * self.mu
-            + self.mu ** 2 * self.n
+            + self.mu**2 * self.n
             - np.sum((self._By - self._B1 * self.mu) ** 2 / self._dL)
         )
 
@@ -320,7 +320,7 @@ class SGPR(GPModel):
         self._check_y()
         sy = np.sum(self.y)
         ytones = np.sum(self._By * self._B1 / self._dL)
-        onesones = np.sum(self._B1 ** 2 / self._dL)
+        onesones = np.sum(self._B1**2 / self._dL)
 
         return (sy - ytones) / (self.n - onesones)
 

@@ -53,7 +53,7 @@ class Spectral(Stationary):
         if s.ndim < 2:
             s = tf.expand_dims(s, 1)
         loc = tf.broadcast_to(self.periods, (s.shape[1],))
-        scale_diag = tf.broadcast_to(self.lengthscales / (0.25 * np.pi ** 2), (s.shape[1],))
+        scale_diag = tf.broadcast_to(self.lengthscales / (0.25 * np.pi**2), (s.shape[1],))
         mvd = tfp.distributions.MultivariateNormalDiag(loc=1 / loc, scale_diag=1 / scale_diag)
         return tf.math.log(tf.constant(0.5, dtype=self.variance.dtype)) + tf.reduce_logsumexp(
             [mvd.log_prob(s), mvd.log_prob(-s)], axis=0

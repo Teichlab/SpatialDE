@@ -147,7 +147,7 @@ class ScoreTest(ABC):
     @staticmethod
     def _calc_test(stat, e_tilde, I_tau_tau) -> ScoreTestResults:
         kappa = I_tau_tau / (2 * e_tilde)
-        nu = 2 * e_tilde ** 2 / I_tau_tau
+        nu = 2 * e_tilde**2 / I_tau_tau
         pval = tfd.Chi2(nu).survival_function(stat / kappa)
         return ScoreTestResults(kappa, nu, stat, e_tilde, I_tau_tau, pval)
 
