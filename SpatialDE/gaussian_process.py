@@ -119,6 +119,7 @@ def fit_model(model: Model, genes: Union[List[str], np.ndarray], counts: np.ndar
 def fit_detailed(
     adata: AnnData,
     genes: Optional[List[str]] = None,
+    layer: Optional[str] = None,
     normalized=False,
     spatial_key="spatial",
     control: Optional[GPControl] = GPControl(),
@@ -134,6 +135,7 @@ def fit_detailed(
     Args:
         adata: The annotated data matrix.
         genes: List of genes to base the analysis on. Defaults to all genes.
+        layer: Name of the AnnData object layer to use. By default ``adata.X`` is used.
         normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
             If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
         spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
@@ -154,8 +156,8 @@ def fit_detailed(
     X = data.obsm[spatial_key]
 
     if not normalized:
-        adata = normalize_counts(adata, copy=True)
-    counts = data.X
+        adata = normalize_counts(adata, layer, copy=True)
+    counts = data.X if layer is None else adata.layers[layer]
 
     gp = control.gp
     if gp is None:
@@ -227,6 +229,7 @@ def fit_detailed(
 def fit_fast(
     adata: AnnData,
     genes: Optional[List[str]] = None,
+    layer: Optional[str] = None,
     normalized=False,
     spatial_key="spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
@@ -242,6 +245,7 @@ def fit_fast(
     Args:
         adata: The annotated data matrix.
         genes: List of genes to base the analysis on. Defaults to all genes.
+        layer: Name of the AnnData object layer to use. By default ``adata.X`` is used.
         normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
             If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
         spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
@@ -265,16 +269,16 @@ def fit_fast(
         )
 
     if not normalized:
-        adata = normalize_counts(adata, copy=True)
+        adata = normalize_counts(adata, layer, copy=True)
 
     data = adata[:, genes] if genes is not None else adata
 
     X = data.obsm[spatial_key]
-    counts = data.X
+    counts = data.X if layer is None else adata.layers[layer]
 
     dcache = DistanceCache(X)
     if kernel_space is None:
-        kernel_space = default_kernel_space(X, dcache)
+        kernel_space = default_kernel_space(dcache)
 
     logging.info("Fitting gene models")
     n_models = 0
@@ -311,6 +315,7 @@ def fit_fast(
 def fit(
     adata: AnnData,
     genes: Optional[List[str]] = None,
+    layer: Optional[str] = None,
     normalized=False,
     spatial_key: str = "spatial",
     control: Optional[GPControl] = GPControl(),
@@ -326,10 +331,10 @@ def fit(
     Returns: A Pandas DataFrame with the results.
     """
     if control is None:
-        return fit_fast(adata, genes, normalized, spatial_key, kernel_space)
+        return fit_fast(adata, genes, layer, normalized, spatial_key, kernel_space)
     else:
         return (
-            fit_detailed(adata, genes, normalized, spatial_key, control, rng)
+            fit_detailed(adata, genes, layer, normalized, spatial_key, control, rng)
             .to_df(modelcol="model")
             .reset_index(drop=True)
         )
