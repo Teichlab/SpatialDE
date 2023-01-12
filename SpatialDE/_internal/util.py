@@ -23,14 +23,23 @@ def get_dtype(df: pd.DataFrame, msg="Data frame"):
     return dtys[0]
 
 
-def normalize_counts(adata: AnnData, layer=None, copy=False):
+def normalize_counts(
+    adata: AnnData,
+    sizefactorcol: Optional[str] = None,
+    layer: Optional[str] = None,
+    copy: bool = False,
+):
     if copy:
         adata = adata.copy()
 
-    sizefactors = pd.DataFrame({"sizefactors": calc_sizefactors(adata, layer=layer)})
+    if sizefactorcol is None:
+        sizefactors = pd.DataFrame({"sizefactors": calc_sizefactors(adata, layer=layer)})
+        sizefactorcol = "np.log(sizefactors)"
+    else:
+        sizefactors = adata.obs
     X = adata.X if layer is None else adata.layers[layer]
     stabilized = NaiveDE.stabilize(dense_slice(X.T))
-    regressed = np.asarray(NaiveDE.regress_out(sizefactors, stabilized, "np.log(sizefactors)").T)
+    regressed = np.asarray(NaiveDE.regress_out(sizefactors, stabilized, sizefactorcol).T)
     if layer is None:
         adata.X = regressed
     else:

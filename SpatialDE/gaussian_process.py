@@ -120,8 +120,9 @@ def fit_detailed(
     adata: AnnData,
     genes: Optional[List[str]] = None,
     layer: Optional[str] = None,
-    normalized=False,
-    spatial_key="spatial",
+    normalized: bool = False,
+    sizefactor_col: Optional[str] = None,
+    spatial_key: str = "spatial",
     control: Optional[GPControl] = GPControl(),
     rng: np.random.Generator = np.random.default_rng(),
 ) -> DataSetResults:
@@ -138,6 +139,8 @@ def fit_detailed(
         layer: Name of the AnnData object layer to use. By default ``adata.X`` is used.
         normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
             If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
+        sizefactor_col: Column in ``adata.obs`` to be used for normalization. If ``None``, total number of
+            counts per spot will be used.
         spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
         control: Parameters for the Gaussian process, e.g. number of kernel components, number of inducing points.
         rng: Random number generator.
@@ -152,7 +155,7 @@ def fit_detailed(
         )
 
     if not normalized:
-        adata = normalize_counts(adata, layer, copy=True)
+        adata = normalize_counts(adata, sizefactor_col, layer, copy=True)
 
     data = adata[:, genes] if genes is not None else adata
     X = data.obsm[spatial_key]
@@ -229,8 +232,9 @@ def fit_fast(
     adata: AnnData,
     genes: Optional[List[str]] = None,
     layer: Optional[str] = None,
-    normalized=False,
-    spatial_key="spatial",
+    normalized: bool = False,
+    sizefactor_col: Optional[str] = None,
+    spatial_key: str = "spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
 ) -> pd.DataFrame:
     """
@@ -247,6 +251,8 @@ def fit_fast(
         layer: Name of the AnnData object layer to use. By default ``adata.X`` is used.
         normalized: Whether the data are already normalized to an approximately Gaussian likelihood.
             If ``False``, they will be normalized using the workflow from Svensson et al, 2018.
+        sizefactor_col: Column in ``adata.obs`` to be used for normalization. If ``None``, total number of
+            counts per spot will be used.
         spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
         control: Parameters for the Gaussian process, e.g. number of kernel components, number of inducing points.
         kernel_space: Kernels to test against. Dictionary with the name of the kernel function as key and list of
@@ -268,7 +274,7 @@ def fit_fast(
         )
 
     if not normalized:
-        adata = normalize_counts(adata, layer, copy=True)
+        adata = normalize_counts(adata, sizefactor_col, layer, copy=True)
 
     data = adata[:, genes] if genes is not None else adata
 
