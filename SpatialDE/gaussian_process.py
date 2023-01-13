@@ -234,6 +234,7 @@ def fit_fast(
     layer: Optional[str] = None,
     normalized: bool = False,
     sizefactor_col: Optional[str] = None,
+    sparse: Optional[bool] = None,
     spatial_key: str = "spatial",
     kernel_space: Optional[Dict[str, Union[float, List[float]]]] = None,
 ) -> pd.DataFrame:
@@ -254,7 +255,8 @@ def fit_fast(
         sizefactor_col: Column in ``adata.obs`` to be used for normalization. If ``None``, total number of
             counts per spot will be used.
         spatial_key: Key in ``adata.obsm`` where the spatial coordinates are stored.
-        control: Parameters for the Gaussian process, e.g. number of kernel components, number of inducing points.
+        sparse: Whether to use sparse GPs. Slightly faster on large datasets, but less precise.
+            Defaults to sparse GPs if more than 1000 data points are given.
         kernel_space: Kernels to test against. Dictionary with the name of the kernel function as key and list of
             lengthscales (if applicable) as values. Currently, three kernel functions are known:
 
@@ -288,7 +290,7 @@ def fit_fast(
     logging.info("Fitting gene models")
     n_models = 0
     Z = None
-    if X.shape[0] > 1000:
+    if sparse is None and X.shape[0] > 1000 or sparse:
         Z = inducers_grid(X, np.maximum(100, np.sqrt(data.n_obs)))
 
     results = []
