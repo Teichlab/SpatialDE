@@ -266,6 +266,7 @@ class SGPR(GPModel):
     def __init__(self, X: np.ndarray, Z: np.ndarray, kern: Kernel):
         super().__init__(X, kernel=kern)
         self.Z = Z
+        self.z = Z.shape[0]
 
     def __enter__(self):
         super().__enter__()
@@ -273,7 +274,7 @@ class SGPR(GPModel):
         K_uf = self.kernel.K(self.Z, self.X)
         K_ff = self.kernel.K_diag(self.X)
 
-        L = np.linalg.cholesky(K_uu + 1e-6 * np.eye(self.Z.shape[0]))
+        L = np.linalg.cholesky(K_uu + 1e-6 * np.eye(self.z))
         LK_uf = scipy.linalg.solve_triangular(L, K_uf, lower=True)
         A = LK_uf @ LK_uf.T
 
@@ -281,7 +282,7 @@ class SGPR(GPModel):
         self._B = U.T @ LK_uf
         self._B1 = np.sum(self._B, axis=-1)
         self._By = None
-        self._traceterm = np.sum(K_ff) - np.sum(LK_uf**2)
+        self._traceterm = np.sum(K_ff) - np.trace(A)
 
         return self
 
@@ -301,7 +302,8 @@ class SGPR(GPModel):
         delta = self.delta
         return 0.5 * (
             -self.n * np.log(2 * np.pi)
-            - self.n * self.sigma_s2
+            - self.z * np.log(self.sigma_s2)
+            - (self.n - self.z) * np.log(self.sigma_n2)
             - np.sum(np.log(delta + self._Lambda))
             - self.n
             - self._traceterm / delta
