@@ -37,7 +37,7 @@ def get_l_limits(X):
 
 def SE_kernel(X, l):
     X = np.array(X)
-    Xsq = np.sum(np.square(X), 1)
+    Xsq = np.sum(np.square(X), axis=1)
     R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
     R2 = np.clip(R2, 1e-12, np.inf)
     return np.exp(-R2 / (2 * l ** 2))
@@ -61,13 +61,12 @@ def cosine_kernel(X, p):
 
 
 def gower_scaling_factor(K):
-    ''' Gower normalization factor for covariance matric K
-
+    ''' Gower normalization factor for covariance matrix K
     Based on https://github.com/PMBio/limix/blob/master/limix/utils/preprocess.py
     '''
     n = K.shape[0]
     P = np.eye(n) - np.ones((n, n)) / n
-    KP = K - K.mean(0)[:, np.newaxis]
+    KP = K - K.mean(axis=0, keepdims=True)
     trPKP = np.sum(P * KP)
 
     return trPKP / (n - 1)
@@ -94,8 +93,8 @@ def mu_hat(delta, UTy, UT1, S, n, Yvar=None):
         Yvar = np.ones_like(S)
 
     UT1_scaled = UT1 / (S + delta * Yvar)
-    sum_1 = UT1_scaled.dot(UTy)
-    sum_2 = UT1_scaled.dot(UT1)
+    sum_1 = np.dot(UT1_scaled, UTy)
+    sum_2 = np.dot(UT1_scaled, UT1)
 
     return sum_1 / sum_2
 
@@ -107,7 +106,7 @@ def s2_t_hat(delta, UTy, S, n, Yvar=None):
         Yvar = np.ones_like(S)
 
     UTy_scaled = UTy / (S + delta * Yvar)
-    return UTy_scaled.dot(UTy) / n
+    return np.dot(UTy_scaled, UTy) / n
 
 
 def LL(delta, UTy, UT1, S, n, Yvar=None):
@@ -137,7 +136,11 @@ def logdelta_prior_lpdf(log_delta):
 
 def make_objective(UTy, UT1, S, n, Yvar=None):
     def LL_obj(log_delta):
-        return -LL(np.exp(log_delta), UTy, UT1, S, n, Yvar)
+        delta = np.exp(log_delta)
+        mu_h = UT1.dot(UTy / (S + delta * Yvar)) / UT1.dot(UT1 / (S + delta * Yvar))
+        LL_val = -0.5 * (n * np.log(2 * np.pi) + np.sum(np.square((UTy - mu_h * UT1)) / (S + delta * Yvar)) +
+                         np.sum(np.log(S + delta * Yvar)))
+        return -LL_val
 
     return LL_obj
 
