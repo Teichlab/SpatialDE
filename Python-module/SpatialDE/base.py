@@ -22,8 +22,9 @@ from .util import qvalue
 
 
 def get_l_limits(X):
+    X = np.array(X)
     Xsq = np.sum(np.square(X), 1)
-    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = -2. * np.dot(X, X.T) + (Xsq[:, np.newaxis] + Xsq[np.newaxis, :])
     R2 = np.clip(R2, 0, np.inf)
     R_vals = np.unique(R2.flatten())
     R_vals = R_vals[R_vals > 1e-8]
@@ -38,7 +39,7 @@ def get_l_limits(X):
 def SE_kernel(X, l):
     X = np.array(X)
     Xsq = np.sum(np.square(X), 1)
-    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = -2. * np.dot(X, X.T) + (Xsq[:, np.newaxis] + Xsq[np.newaxis, :])
     R2 = np.clip(R2, 1e-12, np.inf)
     return np.exp(-R2 / (2 * l ** 2))
 
@@ -55,7 +56,7 @@ def cosine_kernel(X, p):
     '''
     X = np.array(X)
     Xsq = np.sum(np.square(X), 1)
-    R2 = -2. * np.dot(X, X.T) + (Xsq[:, None] + Xsq[None, :])
+    R2 = -2. * np.dot(X, X.T) + (Xsq[:, np.newaxis] + Xsq[np.newaxis, :])
     R2 = np.clip(R2, 1e-12, np.inf)
     return np.cos(2 * np.pi * np.sqrt(R2) / p)
 
