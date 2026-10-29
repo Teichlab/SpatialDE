@@ -9,7 +9,15 @@ import numpy as np
 from scipy import optimize
 from scipy import linalg
 from scipy import stats
-from scipy.misc import derivative
++def _derivative(f, x0, n=1, dx=1e-6):
++    '''Numerical derivative of f at x0 (replacement for removed scipy.misc.derivative).
++    Uses central differences; matches the dx=1e-6 default of scipy.misc.derivative.'''
++    if n == 1:
++        return (f(x0 + dx) - f(x0 - dx)) / (2 * dx)
++    elif n == 2:
++        return (f(x0 + dx) - 2 * f(x0) + f(x0 - dx)) / dx ** 2
++    else:
++        raise NotImplementedError('only n=1 and n=2 supported')
 from scipy.special import logsumexp
 
 with warnings.catch_warnings():
@@ -27,10 +35,10 @@ def get_l_limits(X):
     R2 = np.clip(R2, 0, np.inf)
     R_vals = np.unique(R2.flatten())
     R_vals = R_vals[R_vals > 1e-8]
-    
+
     l_min = np.sqrt(R_vals.min()) / 2.
     l_max = np.sqrt(R_vals.max()) * 2.
-    
+
     return l_min, l_max
 
 ## Kernels ##
@@ -119,7 +127,7 @@ def LL(delta, UTy, UT1, S, n, Yvar=None):
     '''
 
     mu_h = mu_hat(delta, UTy, UT1, S, n, Yvar)
-    
+
     if Yvar is None:
         Yvar = np.ones_like(S)
 
@@ -177,7 +185,7 @@ def lbfgsb_max_LL(UTy, UT1, S, n, Yvar=None):
     max_mu_hat = mu_hat(max_delta, UTy, UT1, S, n, Yvar)
     max_s2_t_hat = s2_t_hat(max_delta, UTy, S, n, Yvar)
 
-    s2_logdelta = 1. / (derivative(LL_obj, np.log(max_delta), n=2) ** 2)
+    s2_logdelta = 1. / (_derivative(LL_obj, np.log(max_delta), n=2) ** 2)
 
     return max_ll, max_delta, max_mu_hat, max_s2_t_hat, s2_logdelta
 
@@ -228,8 +236,8 @@ def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
 
         # Estimate standard error of Fraction Spatial Variance
         FSV = make_FSV(UTy, S, n, Gower)
-        s2_FSV = derivative(FSV, np.log(max_delta), n=1) ** 2 * s2_logdelta
-        
+        s2_FSV = _derivative(FSV, np.log(max_delta), n=1) ** 2 * s2_logdelta
+
         results.append({
             'g': exp_tab.columns[g],
             'max_ll': max_ll,
@@ -242,7 +250,7 @@ def lengthscale_fits(exp_tab, U, UT1, S, Gower, num=64):
             's2_FSV': s2_FSV,
             's2_logdelta': s2_logdelta
         })
-        
+
     return pd.DataFrame(results)
 
 
@@ -266,7 +274,7 @@ def null_fits(exp_tab):
             'time': 0,
             'n': n
         })
-    
+
     return pd.DataFrame(results)
 
 
@@ -291,7 +299,7 @@ def const_fits(exp_tab):
             'time': 0,
             'n': n
         })
-    
+
     return pd.DataFrame(results)
 
 
@@ -301,7 +309,7 @@ def simulate_const_model(MLL_params, N):
         params = params[1]
         s2_e = params.max_s2_t_hat * params.max_delta
         dfm[:, i] = np.random.normal(params.max_mu_hat, s2_e, N)
-        
+
     dfm = pd.DataFrame(dfm)
     return dfm
 
@@ -433,6 +441,8 @@ def run(X, exp_tab, kernel_space=None):
     mll_results['pval'] = 1 - stats.chi2.cdf(mll_results['LLR'], df=1)
     mll_results['qval'] = qvalue(mll_results['pval'])
 
+    # Workaround for known duplication bug: drop duplicated gene rows
+    mll_results = mll_results.drop_duplicates(subset=['g'], keep='first').reset_index(drop=True)
     return mll_results
 
 
