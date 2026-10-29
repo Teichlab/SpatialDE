@@ -47,7 +47,7 @@ def spatialde_test(adata, coord_columns=['x', 'y'], regress_formula='np.log(tota
 
     # Clip 0 pvalues
     min_pval = results.query('pval > 0')['pval'].min() / 2
-    results['pval'] = results['pval'].clip_lower(min_pval)
+    results['pval'] = results['pval'].clip(lower=min_pval)
 
     # Correct for multiple testing
     results['qval'] = qvalue(results['pval'], pi0=1.)

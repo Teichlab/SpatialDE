@@ -1,4 +1,4 @@
-import scipy as sp
+import numpy as sp
 from scipy import interpolate
 
 
